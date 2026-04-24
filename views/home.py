@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from modulos import database as db
 
 def formatar_duracao_h_min(minutos):
@@ -29,18 +29,16 @@ def finalizar_atividade_atual(nome_usuario):
         db.salvar_esforco(logs)
 
 def exibir(user_info):
-    """Função principal da Home - Dashboard Unificado"""
     st.title(f"Olá, {user_info['nome']}! 👋")
     
-    # 1. Carregamento de dados (Módulo Database)
-    projs = db.carregar_projetos()
+    # 1. Carregamento de dados
     diario = db.carregar_diario()
     atividades_log = db.carregar_esforco()
     motivos_gestao = db.carregar_motivos()
     hoje_dt = datetime.now().date()
     hoje_str = datetime.now().strftime("%d/%m/%Y")
 
-    tab_esforco, tab_hoje, tab_agenda, tab_novo = st.tabs([
+    tab_esforco, tab_pendentes, tab_agenda, tab_novo = st.tabs([
         "⚡ Esforço Hoje", "🚀 Atividades Pendentes", "📅 Minha Agenda", "➕ Criar Lembrete"
     ])
 
@@ -50,13 +48,14 @@ def exibir(user_info):
         c1, c2 = st.columns(2)
         with c1:
             if atv_ativa:
-                st.info(f"🚀 **Ativo:** {atv_ativa['motivo']}")
+                st.info(f"🚀 **Ativo agora:**\n\n{atv_ativa['motivo']}")
                 if st.button("Finalizar Agora", type="secondary", use_container_width=True):
                     finalizar_atividade_atual(user_info['nome'])
                     st.rerun()
-            else: st.success("Pronto para começar!")
+            else: st.success("Pronto para começar uma nova tarefa!")
+        
         with c2:
-            motivo_sel = st.selectbox("O que vai fazer agora?", motivos_gestao)
+            motivo_sel = st.selectbox("O que vai fazer?", motivos_gestao)
             detalhes = st.text_input("Obs/Ticket")
             if st.button("INICIAR TAREFA", type="primary", use_container_width=True):
                 finalizar_atividade_atual(user_info['nome'])
@@ -81,64 +80,64 @@ def exibir(user_info):
                 df_meu['Tempo'] = df_meu['duracao_min'].apply(formatar_duracao_h_min)
                 st.dataframe(df_meu[['Hora', 'motivo', 'detalhes', 'status', 'Tempo']], use_container_width=True, hide_index=True)
 
-    # --- ABA 2: PENDÊNCIAS (PQI + DIÁRIO) ---
-    with tab_hoje:
-        c_pqi, c_dia = st.columns(2)
-        with c_pqi:
-            st.subheader("📌 Processos (PQI)")
-            tem_pqi = False
-            for p_idx, p in enumerate(projs):
-                for l_idx, l in enumerate(p.get('lembretes', [])):
-                    tem_pqi = True
-                    with st.container(border=True):
-                        st.write(f"**{p['titulo']}**")
-                        st.caption(f"📅 {l.get('data_hora', 'S/D')}")
-                        st.write(l.get('texto', ''))
-                        if st.button("Concluir", key=f"pqi_{p_idx}_{l_idx}"):
-                            p['lembretes'].pop(l_idx)
-                            db.salvar_projetos(projs)
-                            st.rerun()
-            if not tem_pqi: st.info("Tudo em dia nos processos.")
+    # --- ABA 2: PENDÊNCIAS (PESSOAL vs GERAL) ---
+    with tab_pendentes:
+        tipo_pnd = st.radio("Visualizar:", ["Minhas Pendências", "Geral (Equipe)"], horizontal=True)
+        
+        pendentes_lista = [i for i in diario if i.get('status') == "Pendente"]
+        
+        if tipo_pnd == "Minhas Pendências":
+            exibir_pnd = [i for i in pendentes_lista if i.get('usuario') == user_info['nome']]
+        else:
+            exibir_pnd = pendentes_lista
 
-        with c_dia:
-            st.subheader("📓 Diário de Bordo")
-            pendentes_diario = [i for i in diario if i.get('status') == "Pendente"]
-            if pendentes_diario:
-                for idx, item in enumerate(pendentes_diario):
-                    with st.container(border=True):
-                        st.write(f"**{item.get('depto', 'GERAL')}**")
-                        st.write(item.get('solicitacao', ''))
-                        if st.button("Feito", key=f"dir_home_{idx}"):
-                            item['status'] = "Executado"
-                            db.salvar_diario(diario)
-                            st.rerun()
-            else: st.info("Nenhuma pendência no diário.")
+        if exibir_pnd:
+            for idx, item in enumerate(exibir_pnd):
+                with st.container(border=True):
+                    c_txt, c_btn = st.columns([4, 1])
+                    c_txt.write(f"**[{item.get('depto', 'GERAL')}]** {item.get('solicitacao')}")
+                    if item.get('usuario'): c_txt.caption(f"Solicitado por: {item['usuario']}")
+                    
+                    if c_btn.button("Feito", key=f"pnd_btn_{item.get('usuario')}_{idx}"):
+                        item['status'] = "Executado"
+                        db.salvar_diario(diario)
+                        st.rerun()
+        else:
+            st.info("Nada pendente por aqui!")
 
-    # --- ABA 3: AGENDA ---
+    # --- ABA 3: AGENDA (PESSOAL vs EQUIPE) ---
     with tab_agenda:
-        st.subheader("📅 Próximos Compromissos")
+        tipo_age = st.radio("Filtro de Agenda:", ["Minha Agenda", "Agenda da Equipe"], horizontal=True)
+        
         agenda_dados = []
         for item in diario:
             if item.get('lembrete') and item['lembrete'] != "N/A":
+                # Lógica de Filtro
+                if tipo_age == "Minha Agenda" and item.get('usuario') != user_info['nome']:
+                    continue
+                
                 agenda_dados.append({
                     "Data/Hora": item['lembrete'],
                     "O que": item['solicitacao'],
-                    "Depto": item['depto']
+                    "Depto": item['depto'],
+                    "Quem": item.get('usuario', 'S/I')
                 })
         
         if agenda_dados:
-            st.table(pd.DataFrame(agenda_dados))
+            df_age = pd.DataFrame(agenda_dados).sort_values(by="Data/Hora")
+            st.table(df_age)
         else:
-            st.info("Sua agenda está vazia.")
+            st.info("Nenhum compromisso agendado.")
 
     # --- ABA 4: NOVO LEMBRETE ---
     with tab_novo:
-        st.subheader("➕ Novo Lembrete Rápido")
-        with st.form("form_novo_lembrete"):
-            depto = st.selectbox("Departamento", ["OPERAÇÃO", "TI", "RH", "LOGÍSTICA"])
+        st.subheader("➕ Criar Novo Lembrete")
+        with st.form("form_novo_lembrete_home"):
+            c_dep, c_dt, c_hr = st.columns([2, 1, 1])
+            depto = c_dep.selectbox("Departamento", ["OPERAÇÃO", "TI", "RH", "LOGÍSTICA"])
+            data_lembrete = c_dt.date_input("Data")
+            hora_lembrete = c_hr.time_input("Hora")
             solic = st.text_area("O que precisa ser feito?")
-            data_lembrete = st.date_input("Para quando?")
-            hora_lembrete = st.time_input("Que horas?")
             
             if st.form_submit_button("Salvar no Diário"):
                 if solic:
@@ -154,5 +153,3 @@ def exibir(user_info):
                     db.salvar_diario(diario)
                     st.success("Lembrete agendado!")
                     st.rerun()
-                else:
-                    st.warning("Por favor, preencha a descrição.")
