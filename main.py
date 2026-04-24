@@ -1,10 +1,10 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
-import database as db  # Ajustado para importar direto conforme seu padrão
+import database as db 
 import configuracao as config
 from datetime import datetime
 
-# 1. SETUP INICIAL (Puxando as definições do bloco anterior)
+# 1. SETUP INICIAL
 config.configurar_pagina()
 st.markdown(config.CSS_PREMIUM, unsafe_allow_html=True)
 
@@ -57,12 +57,10 @@ modulos_permitidos = user_info.get('modulos', [])
 
 # 5. SIDEBAR DINÂMICA
 with st.sidebar:
-    # Perfil
     foto_atual = user_info.get('foto') or "https://cdn-icons-png.flaticon.com/512/149/149071.png"
     st.markdown(f'<img src="{foto_atual}" class="profile-pic">', unsafe_allow_html=True)
     st.markdown(f"<p style='text-align:center; font-weight:bold; color:#002366;'>{user_info['nome']}</p>", unsafe_allow_html=True)
     
-    # Construção do Menu de Opções
     menu_options = ["🏠 Home"]
     for nome_exibicao, id_interno in config.MAPA_MODULOS_MESTRE.items():
         if is_adm or id_interno in modulos_permitidos:
@@ -82,7 +80,6 @@ with st.sidebar:
         }
     )
     
-    # 6. MINI MONITOR (Sidebar)
     st.markdown("---")
     logs_sidebar = db.carregar_esforco()
     atv_atual = next((a for a in logs_sidebar if a['usuario'] == user_info['nome'] and a['status'] == 'Em andamento'), None)
@@ -100,8 +97,7 @@ with st.sidebar:
         st.session_state.autenticado = False
         st.rerun()
 
-# 7. ROTEADOR (Importação Dinâmica por Demanda)
-# Isso faz o app carregar mais rápido pois só importa o módulo que vai usar
+# 6. ROTEADOR DE MÓDULOS (Lazy Loading)
 if escolha == "🏠 Home":
     import views_home as home
     home.exibir(user_info)
@@ -118,10 +114,27 @@ elif "RH Docs" in escolha:
     import mod_cartas
     mod_cartas.exibir(user_role=user_role)
 
+elif "Operação" in escolha:
+    import mod_operacao
+    mod_operacao.exibir_operacao_completa(user_role=user_role)
+
 elif "Minha Spin" in escolha:
     import mod_spin
     mod_spin.exibir_tamagotchi(user_info)
 
+elif "Passagens" in escolha:
+    import passagens
+    passagens.exibir_modulo_passagens()
+
+elif "Tickets" in escolha:
+    import mod_tickets
+    mod_tickets.exibir_modulo_tickets(user_info)
+
 elif "Central de Comando" in escolha:
     import views_central as central
     central.exibir(is_adm)
+
+# 7. LÓGICA DE EDIÇÃO DE USUÁRIO (Preservada da Central de Comando)
+if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
+    import views_central as central
+    central.exibir_formulario_edicao(st.session_state.edit_id)
