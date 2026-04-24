@@ -1,0 +1,13 @@
+streamlit
+pandas
+plotly
+xlsxwriter
+openpyxl
+firebase-admin
+python-docx
+streamlit-option-menu
+pypdf
+thefuzz
+requests
+pytz
+streamlit-autorefresh
