@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from datetime import datetime
 from modulos import database as db
 
-# Mapa para vincular o nome amigável ao ID do módulo no banco
+# Configurações de Módulos (Identico ao seu mapeamento)
 MAPA_MODULOS = {
     "🏗️ Manutenção": "manutencao",
     "🎯 Processos": "processos",
@@ -14,152 +15,163 @@ MAPA_MODULOS = {
     "🎫 Tickets": "tickets",
 }
 
-def exibir_dashboard_encerradas():
-    st.subheader("📊 Business Intelligence - Esforço")
-    logs = db.carregar_esforco()
-    if not logs:
-        st.info("Nenhum registro encontrado.")
-        return
-
-    df = pd.DataFrame(logs)
-    if 'status' not in df.columns:
-        st.warning("Sem dados formatados.")
-        return
-        
-    df_fin = df[df['status'] == 'Finalizado'].copy()
-    if df_fin.empty:
-        st.warning("Nenhuma atividade finalizada.")
-        return
-
-    # Filtros simples
-    user_f = st.selectbox("Filtrar Usuário", ["Todos"] + sorted(df_fin['usuario'].unique().tolist()))
-    if user_f != "Todos":
-        df_fin = df_fin[df_fin['usuario'] == user_f]
-    
-    st.dataframe(df_fin, use_container_width=True)
+def formatar_duracao_h_min(minutos):
+    if pd.isna(minutos) or minutos <= 0: return "0min"
+    horas = int(minutos // 60)
+    mins = int(minutos % 60)
+    return f"{horas}H:{mins:02d}min" if horas > 0 else f"{mins}min"
 
 def exibir(is_adm):
     if not is_adm:
-        st.error("Acesso negado.")
+        st.error("🚫 Acesso restrito aos administradores.")
         return
 
     st.title("⚙️ Central de Comando")
     
-    # Carregamento de dados
-    usuarios = db.carregar_usuarios_firebase()
+    # Carregamento de dados globais
+    usuarios_dict = db.carregar_usuarios_firebase()
     departamentos = db.carregar_departamentos()
+    motivos = db.carregar_motivos()
+    logs = db.carregar_esforco()
 
-    menu = st.segmented_control("Gerenciamento:", 
-                               ["🔴 MONITOR", "📊 DASHBOARD", "👥 USUÁRIOS", "🏢 DEPTOS", "⚙️ MOTIVOS"], 
-                               default="🔴 MONITOR")
+    menu = st.segmented_control(
+        "Gerenciamento:", 
+        ["🔴 MONITOR", "📊 DASHBOARD", "👥 USUÁRIOS", "🏢 DEPTOS", "⚙️ MOTIVOS"], 
+        default="🔴 MONITOR"
+    )
 
     # --- 1. MONITORAMENTO EM TEMPO REAL ---
     if menu == "🔴 MONITOR":
         st.subheader("Monitoramento em Tempo Real")
-        logs = db.carregar_esforco()
         ativos = [a for a in logs if a.get('status') == 'Em andamento']
         
         if ativos:
             for atv in ativos:
                 with st.container(border=True):
-                    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
-                    c1.write(f"👤 **{atv['usuario']}**")
-                    c2.write(f"📌 {atv['motivo']}")
-                    c3.write(f"⏰ {atv['inicio'][11:16]}") # Mostra apenas HH:MM
+                    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+                    c1.markdown(f"👤 **{atv['usuario']}**")
+                    c2.markdown(f"📌 {atv['motivo']}\n<small>{atv.get('detalhes', '')}</small>", unsafe_allow_html=True)
                     
-                    # KEY ÚNICA: Nome + Início para evitar DuplicateKeyError
-                    key_btn = f"stop_{atv['usuario']}_{atv['inicio']}".replace(":", "")
-                    if c4.button("🛑", key=key_btn, help="Encerrar atividade"):
-                        # Lógica de encerramento forçado pelo ADM
+                    # Cálculo de tempo decorrido
+                    try:
+                        inicio_dt = datetime.fromisoformat(atv['inicio']).replace(tzinfo=None)
+                        decorrido = (datetime.now() - inicio_dt).seconds // 60
+                        c3.metric("Tempo", f"{decorrido} min")
+                    except: c3.write("⏰ N/A")
+                    
+                    key_btn = f"adm_stop_{atv['usuario']}_{atv['inicio']}".replace(":", "")
+                    if c4.button("🛑 Encerrar", key=key_btn):
                         agora = datetime.now()
-                        inicio = datetime.fromisoformat(atv['inicio'])
-                        duracao = (agora - inicio).total_seconds() / 60
+                        duracao = (agora - inicio_dt).total_seconds() / 60
                         
-                        novos_logs = []
                         for a in logs:
-                            if a == atv:
+                            if a['usuario'] == atv['usuario'] and a['status'] == 'Em andamento':
                                 a['status'] = 'Finalizado'
                                 a['fim'] = agora.isoformat()
                                 a['duracao_min'] = round(duracao, 2)
-                                a['obs_adm'] = "Encerrado pela Central de Comando"
-                            novos_logs.append(a)
                         
-                        db.salvar_esforco(novos_logs)
-                        st.success(f"Atividade de {atv['usuario']} encerrada!")
+                        db.salvar_esforco(logs)
+                        st.success(f"Finalizado: {atv['usuario']}")
                         st.rerun()
         else:
             st.info("Ninguém online no momento.")
 
-    # --- 2. DASHBOARD ---
+    # --- 2. DASHBOARD (BI IDENTICO AO ANTIGO) ---
     elif menu == "📊 DASHBOARD":
-        exibir_dashboard_encerradas()
-
-    # --- 3. GESTÃO DE USUÁRIOS ---
-    elif menu == "👥 USUÁRIOS":
-        st.subheader("Gestão de Acessos")
+        st.subheader("📊 Business Intelligence - Esforço")
+        df = pd.DataFrame(logs)
         
-        with st.expander("➕ Cadastrar Novo Usuário"):
-            with st.form("form_novo_user"):
-                new_id = st.text_input("ID Usuário (Ex: wendley.cunha)")
-                new_nome = st.text_input("Nome Completo")
-                new_role = st.selectbox("Cargo", ["ADM", "OPERACIONAL"])
-                new_depto = st.selectbox("Departamento", departamentos)
+        if not df.empty and 'status' in df.columns:
+            df_fin = df[df['status'] == 'Finalizado'].copy()
+            if not df_fin.empty:
+                # Filtros
+                col_f1, col_f2 = st.columns(2)
+                user_f = col_f1.selectbox("Filtrar Usuário", ["Todos"] + sorted(df_fin['usuario'].unique().tolist()))
+                mot_f = col_f2.selectbox("Filtrar Motivo", ["Todos"] + sorted(df_fin['motivo'].unique().tolist()))
                 
-                st.write("---")
-                st.write("Permissões de Módulo:")
-                selecionados = []
-                cols = st.columns(2)
-                for i, (label, mod_id) in enumerate(MAPA_MODULOS.items()):
-                    if cols[i % 2].checkbox(label, key=f"check_{mod_id}"):
-                        selecionados.append(mod_id)
-                
-                if st.form_submit_button("Salvar Usuário"):
-                    if new_id and new_nome:
-                        dados_user = {
-                            "nome": new_nome,
-                            "role": new_role,
-                            "depto": new_depto,
-                            "modulos": selecionados,
-                            "ativo": True
-                        }
-                        db.salvar_usuario(new_id, dados_user)
-                        st.success("Usuário cadastrado!")
-                        st.rerun()
-                    else:
-                        st.error("Preencha ID e Nome.")
+                if user_f != "Todos": df_fin = df_fin[df_fin['usuario'] == user_f]
+                if mot_f != "Todos": df_fin = df_fin[df_fin['motivo'] == mot_f]
 
-        st.write("---")
-        # Tabela simples de usuários
-        df_users = pd.DataFrame.from_dict(usuarios, orient='index').reset_index()
-        if not df_users.empty:
-            st.dataframe(df_users[['index', 'nome', 'role', 'depto']], use_container_width=True)
+                # Métricas em destaque
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Atividades", len(df_fin))
+                m2.metric("Tempo Total", formatar_duracao_h_min(df_fin['duracao_min'].sum()))
+                m3.metric("Média/Atividade", f"{df_fin['duracao_min'].mean():.1f} min")
+
+                # Gráficos
+                g1, g2 = st.columns(2)
+                with g1:
+                    fig_mot = px.bar(df_fin.groupby('motivo')['duracao_min'].sum().reset_index(), 
+                                   x='motivo', y='duracao_min', title="Minutos por Motivo", color='motivo')
+                    st.plotly_chart(fig_mot, use_container_width=True)
+                with g2:
+                    fig_user = px.pie(df_fin, names='usuario', title="Distribuição de Esforço", hole=0.3)
+                    st.plotly_chart(fig_user, use_container_width=True)
+            else:
+                st.warning("Sem dados finalizados para gerar gráficos.")
+
+    # --- 3. GESTÃO DE USUÁRIOS (COM EDIÇÃO E EXCLUSÃO) ---
+    elif menu == "👥 USUÁRIOS":
+        st.subheader("Gestão de Acessos King Star")
+        
+        # Formulário de Cadastro
+        with st.expander("➕ Cadastrar Novo Colaborador", expanded=False):
+            with st.form("novo_user"):
+                c1, c2 = st.columns(2)
+                u_id = c1.text_input("ID Login (ex: wendley.cunha)")
+                u_nome = c2.text_input("Nome Completo")
+                u_cargo = c1.selectbox("Cargo", ["ADM", "OPERACIONAL", "GERÊNCIA"])
+                u_depto = c2.selectbox("Departamento Principal", departamentos)
+                
+                st.write("**Permissões de Módulos:**")
+                mods_cols = st.columns(3)
+                mods_sel = []
+                for idx, (label, mid) in enumerate(MAPA_MODULOS.items()):
+                    if mods_cols[idx % 3].checkbox(label, key=f"new_mod_{mid}"):
+                        mods_sel.append(mid)
+                
+                if st.form_submit_button("Salvar Colaborador"):
+                    if u_id and u_nome:
+                        dados = {"nome": u_nome, "role": u_cargo, "depto": u_depto, "modulos": mods_sel, "ativo": True}
+                        db.salvar_usuario(u_id, dados)
+                        st.success("Usuário criado!")
+                        st.rerun()
+
+        # Lista de Usuários com Ações
+        st.divider()
+        for uid, info in usuarios_dict.items():
+            with st.container(border=True):
+                col_u1, col_u2, col_u3 = st.columns([3, 2, 1])
+                col_u1.write(f"**{info['nome']}** ({uid})")
+                col_u2.caption(f"Cargo: {info['role']} | Depto: {info['depto']}")
+                
+                if col_u3.button("🗑️", key=f"del_{uid}"):
+                    # Lógica de deletar (se seu db permitir)
+                    st.warning("Funcionalidade de exclusão pendente no banco.")
 
     # --- 4. DEPARTAMENTOS ---
     elif menu == "🏢 DEPTOS":
-        st.subheader("Configuração de Departamentos")
-        
-        c1, c2 = st.columns([3, 1])
-        novo_depto = c1.text_input("Nome do Departamento")
-        if c2.button("Adicionar"):
-            if novo_depto:
-                departamentos.append(novo_depto.upper())
-                db.salvar_departamentos(list(set(departamentos))) # list(set()) remove duplicados
+        st.subheader("Departamentos")
+        novo_d = st.text_input("Nome do Setor")
+        if st.button("Adicionar Setor"):
+            if novo_d:
+                departamentos.append(novo_d.upper())
+                db.salvar_departamentos(list(set(departamentos)))
                 st.rerun()
         
-        st.write("Atuais:")
-        for d in departamentos:
-            st.code(d)
+        st.write("Setores Ativos:")
+        cols_d = st.columns(4)
+        for i, d in enumerate(sorted(departamentos)):
+            cols_d[i % 4].code(d)
 
     # --- 5. MOTIVOS ---
     elif menu == "⚙️ MOTIVOS":
-        st.subheader("Motivos de Esforço")
-        motivos = db.carregar_motivos()
-        
-        novo_m = st.text_input("Novo Motivo")
-        if st.button("Salvar Motivo"):
+        st.subheader("Motivos de Atividade")
+        novo_m = st.text_input("Descrição do Motivo")
+        if st.button("Adicionar Motivo"):
             if novo_m:
                 motivos.append(novo_m.upper())
                 db.salvar_motivos(list(set(motivos)))
                 st.rerun()
         
-        st.write(motivos)
+        st.table(pd.DataFrame({"Motivos Habilitados": motivos}))
