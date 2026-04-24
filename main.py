@@ -3,15 +3,16 @@ import pandas as pd
 from datetime import datetime
 from streamlit_option_menu import option_menu
 
-# IMPORTAÇÃO DOS SEUS MÓDULOS (Precisam existir na mesma pasta ou em subpastas)
-import database as db
-import mod_home  # Vamos criar este arquivo com as funções de Dashboard e Home
+# =========================================================
+# 0. AJUSTE DE IMPORTAÇÃO (CAMINHO NOVO)
+# =========================================================
+# Agora buscamos o banco de dentro da pasta 'modulos'
+from modulos import database as db
 
-# =========================================================
-# 0. CONFIGURAÇÕES INICIAIS
-# =========================================================
+# Configurações de página (Sempre a primeira linha de comando Streamlit)
 st.set_page_config(page_title="Hub King Star | Master", layout="wide", page_icon="👑")
 
+# Mapeamento para facilitar a leitura do menu
 MAPA_MODULOS_MESTRE = {
     "🏠 Home": "home",
     "🏗️ Manutenção": "manutencao",
@@ -39,16 +40,16 @@ ICON_MAP = {
 # =========================================================
 # 1. AUTENTICAÇÃO
 # =========================================================
+# Carrega usuários do Firebase (agora via modulos/database.py)
 usuarios = db.carregar_usuarios_firebase()
 
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
 if not st.session_state.autenticado:
-    # --- TELA DE LOGIN ---
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
-        st.markdown("<br><br><h1>Wendley Portal</h1>", unsafe_allow_html=True)
+        st.markdown("<br><br><h1 style='text-align: center;'>Wendley Portal</h1>", unsafe_allow_html=True)
         u = st.text_input("Usuário").lower().strip()
         p = st.text_input("Senha", type="password")
         if st.button("ACESSAR SISTEMA", use_container_width=True, type="primary"):
@@ -71,7 +72,6 @@ modulos_permitidos = user_info.get('modulos', [])
 with st.sidebar:
     st.markdown(f"### Olá, {user_info['nome']}")
     
-    # Filtra o menu de acordo com as permissões
     menu_options = ["🏠 Home"]
     for nome, mid in MAPA_MODULOS_MESTRE.items():
         if mid in modulos_permitidos or is_adm:
@@ -83,30 +83,32 @@ with st.sidebar:
         menu_icon="cast", default_index=0
     )
     
+    st.divider()
     if st.button("🚪 Sair", use_container_width=True):
         st.session_state.autenticado = False
         st.rerun()
 
 # =========================================================
-# 3. ROTEADOR (O CORAÇÃO DO MAIN)
+# 3. ROTEADOR (CHAMADA DAS VIEWS)
 # =========================================================
-# Aqui o Main apenas chama os outros arquivos
+# Agora os módulos de tela ficam dentro da pasta 'views'
 
 if escolha == "🏠 Home":
+    from views import mod_home # Se ainda não criou, comente esta linha
     mod_home.exibir_home(user_info)
 
 elif escolha == "🏗️ Manutenção":
-    import mod_manutencao
+    from views import mod_manutencao
     mod_manutencao.main()
 
 elif escolha == "🎯 Processos":
-    import mod_processos
+    from views import mod_processos
     mod_processos.exibir(user_role=user_info['role'])
 
 elif escolha == "🎫 Tickets":
-    import mod_tickets
+    from views import mod_tickets
     mod_tickets.exibir_modulo_tickets(user_info)
 
 elif escolha == "⚙️ Central de Comando":
-    import mod_admin
+    from views import mod_admin
     mod_admin.exibir_central(user_info, usuarios)
