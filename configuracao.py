@@ -8,10 +8,13 @@ def configurar_pagina():
         page_icon="👑"
     )
 
-# 2. ESTILO CSS PREMIUM (O que o seu Main espera)
+# 2. ESTILO CSS PREMIUM (Unificado e Atualizado)
 CSS_PREMIUM = """
     <style>
+    /* Estilo Geral da App */
     .stApp { background-color: #f8fafc; }
+    
+    /* Títulos e Cabeçalhos */
     .gold-title {
         color: #002366;
         text-align: center;
@@ -19,25 +22,69 @@ CSS_PREMIUM = """
         letter-spacing: 2px;
         text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
     }
+    
+    /* Perfil do Usuário na Sidebar */
     .profile-pic {
         width: 100px;
         height: 100px;
         border-radius: 50%;
         object-fit: cover;
-        border: 3px solid #D4AF37;
+        border: 3px solid #D4AF37; /* Borda Dourada */
         margin: 0 auto 10px auto;
         display: block;
     }
-    /* Estilo para os cards que você usa na Home */
+
+    /* Card de Usuário na Central de Comando */
+    .user-card {
+        background-color: white;
+        padding: 15px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        text-align: center;
+    }
+    
+    /* Badges de Role (Alçada) */
+    .role-badge {
+        background-color: #002366;
+        color: white;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: bold;
+        display: inline-block;
+        margin-top: 5px;
+    }
+
+    /* Cards da Home (Lembretes e Diário) */
     .reminder-card {
-        background: white; padding: 15px; border-radius: 10px;
-        border-left: 5px solid #ef4444; margin-bottom: 10px;
+        background: white; 
+        padding: 15px; 
+        border-radius: 10px;
+        border-left: 5px solid #ef4444; 
+        margin-bottom: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .diary-card {
+        background: white; 
+        padding: 15px; 
+        border-radius: 10px;
+        border-left: 5px solid #3b82f6; 
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    /* Estilo do Monitor Online */
+    .status-online { 
+        color: #10b981; 
+        font-size: 12px; 
+        font-weight: bold; 
     }
     </style>
 """
 
-# 3. MAPA DE MÓDULOS (IDs que batem com as permissões do Banco)
+# 3. MAPA DE MÓDULOS (IDs que batem com as permissões do Firebase)
 MAPA_MODULOS_MESTRE = {
     "🏗️ Manutenção": "manutencao",
     "🎯 Processos": "processos",
@@ -48,7 +95,7 @@ MAPA_MODULOS_MESTRE = {
     "🎫 Tickets": "tickets"
 }
 
-# 4. MAPA DE ÍCONES (Para o option_menu)
+# 4. MAPA DE ÍCONES (Para garantir a identidade visual do option_menu)
 ICON_MAP = {
     "🏠 Home": "house",
     "🏗️ Manutenção": "tools",
