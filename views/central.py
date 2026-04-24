@@ -1,5 +1,5 @@
 import streamlit as st
-import database as db
+from modulos import database as db
 import configuracao as config
 
 def exibir(is_adm): # Ajustado para bater com a chamada do main.py
