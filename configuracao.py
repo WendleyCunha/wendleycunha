@@ -1,63 +1,11 @@
-# configuracao.py
 import streamlit as st
+import base64
 
-def configurar_pagina():
-    st.set_page_config(
-        page_title="Hub King Star | Premium", 
-        layout="wide", 
-        page_icon="👑"
-    )
+# --- CONSTANTES DO SISTEMA ---
+TITULO_SISTEMA = "Hub King Star | Master"
+ICONE_SISTEMA = "👑"
 
-# Estilo Premium isolado
-CSS_PREMIUM = """
-    <style>
-    /* Fundo da App */
-    .stApp { background-color: #f8fafc; }
-    
-    /* Customização da Sidebar */
-    [data-testid="stSidebar"] { background-color: #F8F9FA; border-right: 1px solid #e2e8f0; }
-    
-    /* Botões Padrão (Dourado King) */
-    div.stButton > button:first-child {
-        background-color: #D4AF37; 
-        color: white; 
-        border: none; 
-        border-radius: 8px; 
-        transition: 0.3s;
-        font-weight: bold;
-    }
-    div.stButton > button:hover {
-        background-color: #b8962d;
-        border: none;
-        color: white;
-    }
-
-    /* Títulos e Cards */
-    .gold-title {
-        text-align: center; 
-        color: #D4AF37; 
-        font-family: 'Trebuchet MS', sans-serif; 
-        font-weight: bold;
-    }
-    .profile-pic {
-        width: 100px; height: 100px; border-radius: 50%;
-        object-fit: cover; border: 3px solid #D4AF37;
-        margin: 0 auto 10px auto; display: block;
-    }
-    .reminder-card {
-        background: white; padding: 15px; border-radius: 10px;
-        border-left: 5px solid #ef4444; margin-bottom: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .diary-card {
-        background: white; padding: 15px; border-radius: 10px;
-        border-left: 5px solid #3b82f6; margin-bottom: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    </style>
-"""
-
-# Mapeamento de Módulos (ID interno vs Nome do Menu)
+# --- MAPA DE MÓDULOS (IDs INTERNOS) ---
 MAPA_MODULOS_MESTRE = {
     "🏠 Home": "home",
     "🏗️ Manutenção": "manutencao",
@@ -69,15 +17,50 @@ MAPA_MODULOS_MESTRE = {
     "🎫 Tickets": "tickets",
 }
 
-# Ícones para o option_menu
+# --- MAPA DE ÍCONES (BOOTSTRAP ICONS) ---
 ICON_MAP = {
-    "🏠 Home": "house",
-    "🏗️ Manutenção": "tools",
-    "🎯 Processos": "diagram-3",
-    "📄 RH Docs": "file-earmark-text",
-    "📊 Operação": "box-seam",
-    "🚗 Minha Spin": "car-front-fill",
-    "🚌 Passagens": "bus-front",
-    "🎫 Tickets": "ticket-perforated",
-    "⚙️ Central de Comando": "shield-lock"
+    "home": "house",
+    "manutencao": "tools",
+    "processos": "diagram-3",
+    "rh": "file-earmark-text",
+    "operacao": "box-seam",
+    "spin": "car-front-fill",
+    "passagens": "bus-front",
+    "tickets": "ticket-perforated",
+    "central": "shield-lock"
 }
+
+# --- ESTILIZAÇÃO CSS GLOBAL ---
+def aplicar_estilo():
+    st.markdown(f"""
+        <style>
+        .stApp {{ background-color: #f8fafc; }}
+        .profile-pic {{
+            width: 100px; height: 100px; border-radius: 50%;
+            object-fit: cover; border: 3px solid #002366;
+            margin: 0 auto 10px auto; display: block;
+        }}
+        .reminder-card {{
+            background: white; padding: 15px; border-radius: 10px;
+            border-left: 5px solid #ef4444; margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }}
+        .diary-card {{
+            background: white; padding: 15px; border-radius: 10px;
+            border-left: 5px solid #3b82f6; margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }}
+        .gold-title {{ color: #002366; font-weight: bold; }}
+        </style>
+    """, unsafe_allow_html=True)
+
+# --- FUNÇÕES UTILITÁRIAS ---
+def processar_foto(arquivo_subido):
+    if arquivo_subido is not None:
+        try:
+            bytes_data = arquivo_subido.getvalue()
+            base64_img = base64.b64encode(bytes_data).decode()
+            return f"data:image/png;base64,{base64_img}"
+        except Exception as e:
+            st.error(f"Erro ao processar imagem: {e}")
+    return None
