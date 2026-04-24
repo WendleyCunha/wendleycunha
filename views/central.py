@@ -1,76 +1,87 @@
 import streamlit as st
+import pandas as pd
+from datetime import datetime
 from modulos import database as db
-import configuracao as config
 
-def exibir(usuarios_firebase, departamentos_lista):
-    """
-    Exibe a Central de Comando. 
-    Recebe os dados carregados no main.py para evitar múltiplas consultas ao banco.
-    """
+# Importamos o mapa aqui para o formulário de cadastro
+MAPA_MODULOS = {
+    "🏗️ Manutenção": "manutencao",
+    "🎯 Processos": "processos",
+    "📄 RH Docs": "rh",
+    "📊 Operação": "operacao",
+    "🚗 Minha Spin": "spin",
+    "🚌 Passagens": "passagens",
+    "🎫 Tickets": "tickets",
+}
+
+def exibir_dashboard_encerradas():
+    st.subheader("📊 Business Intelligence - Esforço")
+    logs = db.carregar_esforco()
+    if not logs:
+        st.info("Nenhum registro encontrado.")
+        return
+
+    df = pd.DataFrame(logs)
+    df_fin = df[df['status'] == 'Finalizado'].copy()
+    if df_fin.empty:
+        st.warning("Nenhuma atividade finalizada.")
+        return
+
+    # Filtros simples (Ajuste conforme sua necessidade de BI)
+    user_f = st.selectbox("Filtrar Usuário", ["Todos"] + sorted(df_fin['usuario'].unique().tolist()))
+    if user_f != "Todos":
+        df_fin = df_fin[df_fin['usuario'] == user_f]
     
-    # Validação de segurança: Verifica se o usuário atual é ADM
-    user_id_atual = st.session_state.get("user_id")
-    user_info_atual = usuarios_firebase.get(user_id_atual, {})
+    st.dataframe(df_fin, use_container_width=True)
+
+def exibir(is_adm):
+    if not is_adm:
+        st.error("Acesso negado.")
+        return
+
+    st.title("⚙️ Central de Comando")
     
-    if user_info_atual.get("role") != "ADM":
-        st.error("Acesso restrito ao Administrador.")
-        st.stop()
+    # Carregamento de dados
+    usuarios = db.carregar_usuarios_firebase()
+    # Usamos get() para evitar erro caso a função não exista no db
+    try:
+        departamentos = db.carregar_departamentos()
+    except:
+        departamentos = ["GERAL"] 
 
-    # Título estilizado usando a cor oficial do configuracao.py
-    st.markdown(f"""
-        <h1 style='color:{config.DOURADO_KING}; text-align:left;'>
-            ⚙️ Central de Comando
-        </h1>
-    """, unsafe_allow_html=True)
-    
-    st.divider()
-    
-    aba_usuarios, aba_config = st.tabs(["👥 Gestão de Usuários", "🛠️ Parâmetros do Sistema"])
+    menu = st.segmented_control("Gerenciamento:", 
+                               ["🔴 MONITOR", "📊 DASHBOARD", "👥 USUÁRIOS", "🏢 DEPTOS", "⚙️ MOTIVOS"], 
+                               default="🔴 MONITOR")
 
-    # --- ABA 1: GESTÃO DE USUÁRIOS ---
-    with aba_usuarios:
-        with st.expander("📝 Cadastrar ou Editar Usuário"):
-            col1, col2 = st.columns(2)
-            with col1:
-                id_login = st.text_input("Login (ID único)", placeholder="ex: wendley.cunha").lower().strip()
-                nome_exibicao = st.text_input("Nome Completo")
-            with col2:
-                senha_acesso = st.text_input("Senha", type="password")
-                nivel_role = st.selectbox("Nível de Acesso", ["OPERACIONAL", "ADM"])
-            
-            # Busca os módulos disponíveis dinamicamente do configuracao.py
-            modulos_disponiveis = list(config.MAPA_MODULOS_MESTRE.values())
-            permissoes_selecionadas = st.multiselect("Módulos Permitidos", modulos_disponiveis)
-            
-            if st.button("SALVAR ALTERAÇÕES", use_container_width=True):
-                if id_login and nome_exibicao and senha_acesso:
-                    novos_dados = {
-                        "nome": nome_exibicao,
-                        "senha": senha_acesso,
-                        "role": nivel_role,
-                        "modulos": permissoes_selecionadas,
-                        "foto": "" # Placeholder para manter a estrutura
-                    }
-                    db.salvar_usuario(id_login, novos_dados)
-                    st.success(f"Dados de '{id_login}' atualizados com sucesso!")
-                    st.rerun()
-                else:
-                    st.warning("Atenção: Login, Nome e Senha são campos obrigatórios.")
+    if menu == "🔴 MONITOR":
+        st.subheader("Monitoramento em Tempo Real")
+        logs = db.carregar_esforco()
+        ativos = [a for a in logs if a['status'] == 'Em andamento']
+        if ativos:
+            for atv in ativos:
+                with st.container(border=True):
+                    c1, c2, c3 = st.columns([2, 2, 1])
+                    c1.write(f"👤 **{atv['usuario']}**")
+                    c2.write(f"📌 {atv['motivo']}")
+                    if c3.button("Encerrar", key=f"stop_{atv['usuario']}"):
+                        # Lógica de encerramento ADM aqui
+                        pass 
+        else:
+            st.info("Ninguém online.")
 
-        st.subheader("Usuários Cadastrados")
-        # Exibe os dados que vieram do parâmetro da função
-        st.dataframe(usuarios_firebase, use_container_width=True)
+    elif menu == "📊 DASHBOARD":
+        exibir_dashboard_encerradas()
 
-    # --- ABA 2: CONFIGURAÇÕES ---
-    with aba_config:
-        st.subheader("Listas de Departamentos")
-        st.info("Estas opções aparecem nos formulários de todo o sistema.")
-        
-        # Usa a lista de departamentos que veio do parâmetro da função
-        texto_deps = "\n".join(departamentos_lista)
-        novos_deps = st.text_area("Um departamento por linha:", value=texto_deps, height=200)
-        
-        if st.button("ATUALIZAR LISTA DE DEPARTAMENTOS"):
-            lista_final = [d.strip() for d in novos_deps.split("\n") if d.strip()]
-            db.salvar_departamentos(lista_final)
-            st.success("Lista de departamentos atualizada no banco de dados!")
+    elif menu == "👥 USUÁRIOS":
+        st.subheader("Gestão de Acessos")
+        # Aqui você coloca a lógica de st.expander de cadastro e a lista de usuários
+        st.write("Lista de usuários cadastrados:")
+        st.json(list(usuarios.keys())) # Exemplo simplificado
+
+    elif menu == "🏢 DEPTOS":
+        st.subheader("Departamentos")
+        novo_depto = st.text_input("Novo Departamento")
+        if st.button("Salvar Depto"):
+            departamentos.append(novo_depto.upper())
+            db.salvar_departamentos(departamentos)
+            st.rerun()
