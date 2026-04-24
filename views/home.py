@@ -3,24 +3,23 @@ from modulos import database as db
 from datetime import datetime
 
 def exibir(user_info):
-    st.markdown(f"<h1 style='color: #D4AF37;'>Olá, {user_info['nome']}! 👋</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h1 class='gold-title'>Olá, {user_info['nome']}! 👋</h1>", unsafe_allow_html=True)
     
-    tab_esforco, tab_agenda = st.tabs(["⚡ Esforço & Atividades", "📅 Diário e Avisos"])
+    tab_esforco, tab_agenda = st.tabs(["⚡ Registro de Esforço", "📅 Diário de Bordo"])
     
     with tab_esforco:
-        st.subheader("O que você está fazendo agora?")
-        # Carrega logs para verificar se já existe algo em andamento
+        # 1. Carregar logs existentes
         logs = db.carregar_esforco()
+        
+        # 2. Verificar se este usuário já tem algo rodando
         atv_ativa = next((a for a in logs if a['usuario'] == user_info['nome'] and a['status'] == 'Em andamento'), None)
 
         if not atv_ativa:
-            # Opções de atividades baseadas no seu dia a dia na King Star
-            motivo = st.selectbox("Selecione a tarefa:", 
-                                ["Monitoria de Qualidade", "Mapeamento de Processo", 
-                                 "Reunião Tiago Costa", "Ajuste de Dashboard", "Treinamento", "Outros"])
-            detalhe = st.text_input("Detalhe da tarefa (opcional)")
+            st.subheader("Iniciar nova atividade")
+            motivo = st.selectbox("O que vai fazer agora?", ["Monitoria", "Processos", "Reunião Tiago Costa", "BI/Dashboards"])
+            detalhe = st.text_input("Alguma observação?")
             
-            if st.button("▶️ INICIAR ESFORÇO", use_container_width=True):
+            if st.button("▶️ INICIAR AGORA", use_container_width=True):
                 nova_atv = {
                     "usuario": user_info['nome'],
                     "inicio": datetime.now().isoformat(),
@@ -32,23 +31,21 @@ def exibir(user_info):
                 db.salvar_esforco(logs)
                 st.rerun()
         else:
-            st.success(f"Tarefa em curso: **{atv_ativa['motivo']}**")
-            st.info("Você pode encerrar esta tarefa no menu lateral a qualquer momento.")
+            st.success(f"Você está em: **{atv_ativa['motivo']}**")
+            st.info("Finalize no botão 'Parar' na barra lateral.")
 
     with tab_agenda:
-        col1, col2 = st.columns(2)
+        # Usando sua função carregar_diario()
+        st.subheader("Anotações do Dia")
+        diario = db.carregar_diario()
         
-        with col1:
-            st.markdown("### 📢 Avisos e Lembretes")
-            lembretes = db.carregar_lembretes() # Certifique-se que essa função existe no database.py
-            for l in lembretes:
-                st.markdown(f"""<div class="reminder-card">
-                    <strong>{l['titulo']}</strong><br>{l['texto']}
-                </div>""", unsafe_allow_html=True)
-
-        with col2:
-            st.markdown("### ✍️ Meu Diário de Bordo")
-            nota = st.text_area("O que aprendeu ou resolveu hoje?", placeholder="Ex: Resolvido gargalo na logística...")
-            if st.button("Salvar Nota"):
-                # Lógica para salvar no Firebase ou JSON
-                st.toast("Nota salva com sucesso!")
+        texto_nota = st.text_area("Relate um aprendizado ou situação de hoje:")
+        if st.button("Salvar no Diário"):
+            nova_nota = {
+                "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "usuario": user_info['nome'],
+                "texto": texto_nota
+            }
+            diario.append(nova_nota)
+            db.salvar_diario(diario)
+            st.success("Nota salva com sucesso!")
