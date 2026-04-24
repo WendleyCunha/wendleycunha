@@ -4,11 +4,10 @@ from google.oauth2 import service_account
 import json
 from datetime import datetime
 
-# --- CONFIGURAÇÃO INICIAL (Motor Original) ---
+# --- CONFIGURAÇÃO INICIAL ---
 def inicializar_db():
     if "db" not in st.session_state:
         try:
-            # Puxa a chave das Secrets do Streamlit
             key_dict = json.loads(st.secrets["textkey"])
             creds = service_account.Credentials.from_service_account_info(key_dict)
             st.session_state.db = firestore.Client(credentials=creds, project="bancowendley")
@@ -17,69 +16,67 @@ def inicializar_db():
             return None
     return st.session_state.db
 
-# --- GESTÃO DE USUÁRIOS ---
+# --- USUÁRIOS ---
 def carregar_usuarios_firebase():
     db = inicializar_db()
     if not db: return {}
     try:
         users_ref = db.collection("usuarios").stream()
         return {doc.id: doc.to_dict() for doc in users_ref}
-    except Exception:
-        return {}
+    except Exception: return {}
 
-def salvar_usuario(login, dados):
-    db = inicializar_db()
-    if db:
-        # Garante que o login seja a chave do documento
-        db.collection("usuarios").document(login.lower().strip()).set(dados, merge=True)
-
-# --- ESFORÇO (Logs de Atividade) ---
+# --- ESFORÇO ---
 def carregar_esforco():
     db = inicializar_db()
     if not db: return []
     try:
         doc = db.collection("config").document("esforco_logs").get()
-        if doc.exists:
-            return doc.to_dict().get("dados", [])
-        return []
-    except Exception:
-        return []
+        return doc.to_dict().get("dados", []) if doc.exists else []
+    except: return []
 
 def salvar_esforco(lista_esforco):
     db = inicializar_db()
-    if db:
-        db.collection("config").document("esforco_logs").set({"dados": lista_esforco})
+    if db: db.collection("config").document("esforco_logs").set({"dados": lista_esforco})
 
-# --- DIÁRIO DE BORDO ---
+# --- PROJETOS (A função que faltava) ---
+def carregar_projetos():
+    db = inicializar_db()
+    if not db: return []
+    try:
+        doc = db.collection("config").document("projetos_pqi").get()
+        return doc.to_dict().get("dados", []) if doc.exists else []
+    except: return []
+
+def salvar_projetos(lista_projetos):
+    db = inicializar_db()
+    if db: db.collection("config").document("projetos_pqi").set({"dados": lista_projetos})
+
+# --- DIÁRIO ---
 def carregar_diario():
     db = inicializar_db()
     if not db: return []
     try:
         doc = db.collection("config").document("diario_situacoes").get()
-        if doc.exists:
-            return doc.to_dict().get("dados", [])
-        return []
-    except Exception:
-        return []
+        return doc.to_dict().get("dados", []) if doc.exists else []
+    except: return []
 
 def salvar_diario(lista_diario):
     db = inicializar_db()
-    if db:
-        db.collection("config").document("diario_situacoes").set({"dados": lista_diario})
+    if db: db.collection("config").document("diario_situacoes").set({"dados": lista_diario})
 
-# --- DEPARTAMENTOS ---
+# --- CONFIGURAÇÕES GERAIS ---
+def carregar_motivos():
+    db = inicializar_db()
+    if not db: return ["PROJETO", "REUNIÃO", "OUTROS"]
+    try:
+        doc = db.collection("config").document("esforco_motivos").get()
+        return doc.to_dict().get("lista", ["PROJETO", "REUNIÃO", "OUTROS"]) if doc.exists else ["PROJETO", "REUNIÃO", "OUTROS"]
+    except: return ["PROJETO", "REUNIÃO", "OUTROS"]
+
 def carregar_departamentos():
     db = inicializar_db()
-    if not db: return ["Operação", "Logística", "RH", "TI"]
+    if not db: return ["GERAL"]
     try:
         doc = db.collection("config").document("departamentos").get()
-        if doc.exists:
-            return doc.to_dict().get("lista", ["Operação", "Logística", "RH", "TI"])
-        return ["Operação", "Logística", "RH", "TI"]
-    except Exception:
-        return ["Geral"]
-
-def salvar_departamentos(lista):
-    db = inicializar_db()
-    if db:
-        db.collection("config").document("departamentos").set({"lista": lista})
+        return doc.to_dict().get("lista", ["GERAL"]) if doc.exists else ["GERAL"]
+    except: return ["GERAL"]
