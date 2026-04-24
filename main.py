@@ -1,12 +1,18 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 from modulos import database as db
+import os
 
 # 1. Configuração de Página e Estilo Premium
 st.set_page_config(page_title="Hub King Star | Premium", layout="wide", page_icon="👑")
 
 st.markdown("""
     <style>
+    /* Fundo da Sidebar em Cinza Claro */
+    [data-testid="stSidebar"] {
+        background-color: #F8F9FA;
+    }
+    
     /* Botão Primário Dourado */
     div.stButton > button:first-child {
         background-color: #D4AF37;
@@ -42,7 +48,6 @@ if not st.session_state.autenticado:
         u = st.text_input("Usuário").lower().strip()
         p = st.text_input("Senha", type="password")
         if st.button("ACESSAR SISTEMA", use_container_width=True):
-            # Validação: Firebase ou Senha Mestra
             if u in usuarios and (usuarios[u]["senha"] == p or p == "master77"):
                 st.session_state.autenticado = True
                 st.session_state.user_id = u
@@ -51,31 +56,48 @@ if not st.session_state.autenticado:
                 st.error("Credenciais inválidas.")
     st.stop()
 
-# 3. Menu de Navegação (Views)
+# 3. Menu de Navegação (Sidebar Cinza Claro)
 user_info = usuarios.get(st.session_state.user_id)
-is_adm = user_info.get('role') == "ADM"
-modulos_permitidos = user_info.get('modulos', [])
 
 with st.sidebar:
-    st.markdown(f"<h2 style='color:#D4AF37;'>Olá, {user_info['nome']}</h2>", unsafe_allow_html=True)
-    
-    # Define quais módulos aparecem no menu
-    menu_map = {"🏠 Home": "home", "📄 Cartas": "cartas"} # Adicione os outros aqui
+    st.markdown(f"<h3 style='color:#495057;'>Olá, {user_info['nome']}</h3>", unsafe_allow_html=True)
+    st.write("---")
     
     escolha = option_menu(
         "Menu Principal", ["🏠 Home", "📄 Cartas"], 
         icons=['house', 'file-earmark-text'], 
         menu_icon="cast", default_index=0,
         styles={
-            "container": {"background-color": "#0E1117"},
+            "container": {"background-color": "#F8F9FA", "padding": "5px"},
             "icon": {"color": "#D4AF37", "font-size": "20px"}, 
-            "nav-link-selected": {"background-color": "#D4AF37"},
+            "nav-link": {
+                "font-size": "16px", 
+                "text-align": "left", 
+                "margin": "0px", 
+                "color": "#495057" # Texto em cinza escuro para ler no fundo claro
+            },
+            "nav-link-selected": {
+                "background-color": "#D4AF37", # Destaque Dourado
+                "color": "white"
+            },
         }
     )
+    
+    st.write("---")
+    if st.button("Sair / Logout"):
+        st.session_state.autenticado = False
+        st.rerun()
 
 # 4. Roteador de Telas
 if escolha == "🏠 Home":
-    st.write("Bem-vindo ao Dashboard!")
+    st.markdown(f"# Bem-vindo, {user_info['nome']}!")
+    st.info("Selecione um módulo no menu lateral para começar.")
+
 elif escolha == "📄 Cartas":
-    from views import mod_cartas
-    mod_cartas.exibir(user_info['role'])
+    try:
+        from views import mod_cartas
+        mod_cartas.exibir(user_info['role'])
+    except ImportError:
+        st.error("Erro: O módulo 'views/mod_cartas.py' não foi encontrado.")
+    except Exception as e:
+        st.error(f"Erro ao carregar módulo: {e}")
