@@ -1,143 +1,66 @@
 import streamlit as st
-from google.cloud import firestore
-from google.oauth2 import service_account
+import requests
 import json
-from datetime import datetime
 
-# --- 1. CONEXÃO ---
-def inicializar_db():
-    """Conecta ao Firebase usando as Secrets do Streamlit Cloud"""
-    if "db" not in st.session_state:
-        try:
-            key_dict = json.loads(st.secrets["textkey"])
-            creds = service_account.Credentials.from_service_account_info(key_dict)
-            st.session_state.db = firestore.Client(credentials=creds, project="bancowendley")
-        except Exception as e:
-            st.error(f"Erro de conexão com o Banco de Dados: {e}")
-            return None
-    return st.session_state.db
+# SUBSTITUA PELA SUA URL REAL DO FIREBASE
+FIREBASE_URL = "https://seu-projeto-firebase.firebaseio.com/"
 
-# --- 2. GESTÃO DE USUÁRIOS ---
+# --- USUÁRIOS ---
 def carregar_usuarios_firebase():
-    db = inicializar_db()
-    if not db: return {}
     try:
-        users_ref = db.collection("usuarios").stream()
-        return {doc.id.lower(): doc.to_dict() for doc in users_ref}
-    except: 
+        response = requests.get(f"{FIREBASE_URL}/usuarios.json")
+        return response.json() if response.json() else {}
+    except Exception as e:
+        st.error(f"Erro ao carregar usuários: {e}")
         return {}
 
 def salvar_usuario(login, dados):
-    db = inicializar_db()
-    if db:
-        db.collection("usuarios").document(login.lower().strip()).set(dados, merge=True)
-
-def deletar_usuario(login):
-    db = inicializar_db()
-    if db:
-        db.collection("usuarios").document(login.lower().strip()).delete()
-
-# --- 3. MOTOR DE CONFIGURAÇÃO (O coração do novo DB) ---
-def carregar_config(documento, chave_dados, default=None):
-    db = inicializar_db()
-    if not db: return default if default is not None else []
     try:
-        doc = db.collection("config").document(documento).get()
-        if doc.exists:
-            res = doc.to_dict().get(chave_dados)
-            return res if res is not None else (default if default is not None else [])
-        return default if default is not None else []
-    except:
-        return default if default is not None else []
+        requests.put(f"{FIREBASE_URL}/usuarios/{login}.json", json=dados)
+    except Exception as e:
+        st.error(f"Erro ao salvar usuário: {e}")
 
-def salvar_config(documento, chave_dados, lista):
-    db = inicializar_db()
-    if db:
-        try:
-            db.collection("config").document(documento).set({chave_dados: lista}, merge=True)
-            return True
-        except Exception as e:
-            st.error(f"Erro ao salvar {documento}: {e}")
-            return False
-    return False
+# --- ESFORÇO (Logs de Atividade) ---
+def carregar_esforco():
+    try:
+        response = requests.get(f"{FIREBASE_URL}/esforco.json")
+        res_json = response.json()
+        return res_json if isinstance(res_json, list) else []
+    except Exception:
+        return []
 
-# --- 4. FUNÇÕES ESPECÍFICAS (Utilizando o motor acima) ---
+def salvar_esforco(logs):
+    try:
+        requests.put(f"{FIREBASE_URL}/esforco.json", json=logs)
+    except Exception as e:
+        st.error(f"Erro ao salvar esforço: {e}")
 
-# Departamentos
+# --- DIÁRIO DE BORDO ---
+def carregar_diario():
+    try:
+        response = requests.get(f"{FIREBASE_URL}/diario.json")
+        res_json = response.json()
+        return res_json if isinstance(res_json, list) else []
+    except Exception:
+        return []
+
+def salvar_diario(diario):
+    try:
+        requests.put(f"{FIREBASE_URL}/diario.json", json=diario)
+    except Exception as e:
+        st.error(f"Erro ao salvar diário: {e}")
+
+# --- CONFIGURAÇÕES GERAIS ---
 def carregar_departamentos():
-    return carregar_config("departamentos", "lista", ["GERAL", "TI", "RH", "OPERAÇÃO"])
+    try:
+        response = requests.get(f"{FIREBASE_URL}/configuracoes/departamentos.json")
+        res_json = response.json()
+        return res_json if res_json else ["Operação", "Logística", "RH", "TI"]
+    except Exception:
+        return ["Geral"]
 
 def salvar_departamentos(lista):
-    return salvar_config("departamentos", "lista", lista)
-
-# Projetos PQI
-def carregar_projetos():
-    return carregar_config("projetos_pqi", "dados", [])
-
-def salvar_projetos(lista):
-    return salvar_config("projetos_pqi", "dados", lista)
-
-# Diário e Logs de Esforço
-def carregar_diario():
-    return carregar_config("diario_situacoes", "dados", [])
-
-def salvar_diario(lista):
-    return salvar_config("diario_situacoes", "dados", lista)
-
-def carregar_esforco():
-    return carregar_config("esforco_logs", "dados", [])
-
-def salvar_esforco(lista):
-    return salvar_config("esforco_logs", "dados", lista)
-
-# Motivos de Pausa/Trabalho
-def carregar_motivos():
-    return carregar_config("esforco_motivos", "lista", ["PROJETO", "REUNIÃO", "PAUSA", "OUTROS"])
-
-def salvar_motivos(lista):
-    return salvar_config("esforco_motivos", "lista", lista)
-
-# Módulo Spin
-def carregar_dados_spin():
-    return carregar_config("spin_data", "dados", {"km_atual": 138000, "historico": []})
-
-def salvar_dados_spin(dados):
-    return salvar_config("spin_data", "dados", dados)
-
-# Tickets, Mailing e Histórico de Contatos
-def carregar_mailing():
-    return carregar_config("mailing_tickets", "dados", [])
-
-def salvar_mailing(lista):
-    return salvar_config("mailing_tickets", "dados", lista)
-
-def carregar_historico_contatos():
-    return carregar_config("historico_contatos", "dados", [])
-
-def salvar_historico_contatos(lista):
-    return salvar_config("historico_contatos", "dados", lista)
-
-def carregar_motivos_config():
-    return carregar_config("tickets_motivos", "dados", [])
-
-def salvar_motivos_config(lista):
-    return salvar_config("tickets_motivos", "dados", lista)
-
-# --- 5. GESTÃO DE ARQUIVOS (BLOB) ---
-def salvar_arquivo_firestore(nome_arquivo, dados_binarios):
-    db = inicializar_db()
-    if db:
-        try:
-            doc_ref = db.collection("arquivos_pqi").document(nome_arquivo)
-            doc_ref.set({"conteudo": dados_binarios, "data_upload": datetime.now()})
-            return True
-        except: return False
-    return False
-
-def baixar_arquivo_firestore(nome_arquivo):
-    db = inicializar_db()
-    if not db: return None
     try:
-        doc = db.collection("arquivos_pqi").document(nome_arquivo).get()
-        return doc.to_dict().get("conteudo") if doc.exists else None
-    except: return None
+        requests.put(f"{FIREBASE_URL}/configuracoes/departamentos.json", json=lista)
+    except Exception as e:
+        st.error(f"Erro ao salvar departamentos: {e}")
