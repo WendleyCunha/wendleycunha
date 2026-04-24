@@ -1,69 +1,53 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 
-# --- DEFINIÇÃO DE CORES (MODERN CLEAN) ---
-COLOR_BG = "#F8F9FA"          # Fundo quase branco, muito limpo
-COLOR_SIDEBAR = "#212529"     # Grafite padrão Bootstrap (muito profissional)
-COLOR_GOLD = "#B8860B"        # Dourado King Star
-COLOR_TEXT_DARK = "#343A40"   # Cinza escuro para leitura perfeita
-COLOR_WHITE = "#FFFFFF"
+# --- CORES ESTILO SISTEMA CORPORATIVO ---
+COLOR_BG = "#FFFFFF"           # Branco puro (elimina sensação de 'sujo')
+COLOR_SIDEBAR = "#1A1C22"      # Grafite Profissional
+COLOR_GOLD = "#B8860B"         # Dourado King Star
+COLOR_TEXT = "#2D2E33"         # Texto Cinza Escuro (Leitura fácil)
 
 CSS_PORTAL = f"""
 <style>
-    /* Reset Geral para Limpeza Visual */
+    /* Reset total para visual limpo */
     .stApp {{
         background-color: {COLOR_BG};
     }}
 
-    /* Sidebar - Estilo Sólido e Elegante */
+    /* Sidebar Estilo Industrial */
     [data-testid="stSidebar"] {{
         background-color: {COLOR_SIDEBAR} !important;
-        min-width: 280px !important;
+        border-right: 1px solid #e0e0e0;
     }}
 
-    /* Estilização da Foto de Perfil */
-    .profile-container {{
-        text-align: center;
-        padding: 20px 0;
-    }}
+    /* Foto de Perfil */
     .profile-pic {{
-        width: 110px; height: 110px; border-radius: 50%;
+        width: 100px; height: 100px; border-radius: 50%;
         object-fit: cover; border: 3px solid {COLOR_GOLD};
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        margin: 0 auto 10px auto; display: block;
     }}
 
-    /* Textos na Sidebar */
-    .user-name {{
-        color: {COLOR_WHITE}; font-size: 1.1rem; font-weight: 600;
-        margin-top: 10px; margin-bottom: 0; text-align: center;
-    }}
-    .user-job {{
-        color: {COLOR_GOLD}; font-size: 0.85rem; font-weight: 500;
-        text-transform: uppercase; letter-spacing: 1px; text-align: center;
+    /* Textos Sidebar */
+    .sb-nome {{ color: white; text-align: center; font-weight: 600; margin-bottom: 0; }}
+    .sb-cargo {{ color: {COLOR_GOLD}; text-align: center; font-size: 0.8rem; margin-top: 0; font-weight: bold; }}
+
+    /* Cards de Tarefas (Atrasada/Agendada) */
+    .stAlert {{
+        border-radius: 8px !important;
+        border: 1px solid #f0f0f0 !important;
     }}
 
-    /* Ajuste de Cards e Containers de Conteúdo */
-    .stMarkdown, .stButton, .stTextInput {{
-        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    }}
-
-    /* Botão de Sair - Minimalista */
-    [data-testid="stSidebar"] .stButton > button {{
+    /* Botão de Sair - Estilo Minimalista na Base */
+    .stButton > button {{
+        width: 100%;
         background-color: transparent !important;
-        color: #ADB5BD !important;
-        border: 1px solid #495057 !important;
-        border-radius: 6px;
-        transition: all 0.3s;
+        color: #888 !important;
+        border: 1px solid #444 !important;
     }}
-    [data-testid="stSidebar"] .stButton > button:hover {{
-        background-color: #C82333 !important;
+    .stButton > button:hover {{
         color: white !important;
-        border-color: #C82333 !important;
+        border-color: {COLOR_GOLD} !important;
     }}
-
-    /* Esconder elementos desnecessários do Streamlit */
-    #MainMenu {{visibility: hidden;}}
-    footer {{visibility: hidden;}}
 </style>
 """
 
@@ -81,51 +65,46 @@ ICON_MAP = {
     "Central de Comando": "shield-lock"
 }
 
-# Estilo do Menu (Bootstrap Standard)
 ESTILO_MENU = {
-    "container": {"padding": "5px", "background-color": "transparent"},
-    "icon": {"color": "#ADB5BD", "font-size": "18px"}, 
+    "container": {"padding": "0!important", "background-color": "transparent"},
+    "icon": {"color": "#888", "font-size": "16px"}, 
     "nav-link": {
-        "color": "#E9ECEF", "font-size": "14px", "text-align": "left", 
-        "margin": "8px 0px", "border-radius": "8px"
+        "color": "#CCC", "font-size": "14px", "text-align": "left", 
+        "margin": "5px", "--hover-color": "#333"
     },
     "nav-link-selected": {
-        "background-color": COLOR_GOLD, "color": COLOR_WHITE, "font-weight": "600"
+        "background-color": COLOR_GOLD, "color": "white", "font-weight": "bold"
     }
 }
 
 # --- FUNÇÕES ---
 def configurar_pagina():
+    # Isso força o Streamlit a limpar o cache visual e aplicar o novo layout
     st.set_page_config(page_title="Hub King Star", layout="wide", page_icon="👑")
     st.markdown(CSS_PORTAL, unsafe_allow_html=True)
 
 def desenhar_sidebar(user_info, menu_options):
     with st.sidebar:
-        # Container de Perfil
         foto = user_info.get('foto', 'https://www.w3schools.com/howto/img_avatar.png')
-        st.markdown(f"""
-            <div class="profile-container">
-                <img src="{foto}" class="profile-pic">
-                <p class="user-name">{user_info.get('nome', 'Usuário')}</p>
-                <p class="user-job">{user_info.get('cargo', 'Analista')}</p>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<img src="{foto}" class="profile-pic">', unsafe_allow_html=True)
+        st.markdown(f'<p class="sb-nome">{user_info.get("nome", "Usuário")}</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="sb-cargo">{user_info.get("cargo", "Analista")}</p>', unsafe_allow_html=True)
         
-        st.markdown("<hr style='border-color: #495057; margin-top: 0;'>", unsafe_allow_html=True)
+        st.divider()
 
-        # Menu de Navegação
         escolha = option_menu(
-            menu_title=None, 
-            options=menu_options,
+            menu_title=None, options=menu_options,
             icons=[ICON_MAP.get(opt, "circle") for opt in menu_options],
-            styles=ESTILO_MENU,
-            default_index=0
+            styles=ESTILO_MENU
         )
         
-        # Espaçador e Botão de Sair
-        st.markdown("<div style='flex-grow: 1; min-height: 20vh;'></div>", unsafe_allow_html=True)
-        if st.button("Sair do Sistema"):
+        st.write("") 
+        if st.button("Sair do Hub"):
             st.session_state.autenticado = False
             st.rerun()
             
     return escolha
+
+# --- CORREÇÃO DO ERRO DE KEYERROR NO SEU ARQUIVO central.py ---
+# Na sua função de exibir usuários, substitua a linha do erro por esta lógica:
+# info.get('depto', 'N/A') -> Isso evita que o app trave se a chave não existir.
