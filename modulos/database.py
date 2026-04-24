@@ -1,66 +1,85 @@
 import streamlit as st
-import requests
+from google.cloud import firestore
+from google.oauth2 import service_account
 import json
+from datetime import datetime
 
-# SUBSTITUA PELA SUA URL REAL DO FIREBASE
-FIREBASE_URL = "https://seu-projeto-firebase.firebaseio.com/"
+# --- CONFIGURAÇÃO INICIAL (Motor Original) ---
+def inicializar_db():
+    if "db" not in st.session_state:
+        try:
+            # Puxa a chave das Secrets do Streamlit
+            key_dict = json.loads(st.secrets["textkey"])
+            creds = service_account.Credentials.from_service_account_info(key_dict)
+            st.session_state.db = firestore.Client(credentials=creds, project="bancowendley")
+        except Exception as e:
+            st.error(f"Erro de Conexão com Firestore: {e}")
+            return None
+    return st.session_state.db
 
-# --- USUÁRIOS ---
+# --- GESTÃO DE USUÁRIOS ---
 def carregar_usuarios_firebase():
+    db = inicializar_db()
+    if not db: return {}
     try:
-        response = requests.get(f"{FIREBASE_URL}/usuarios.json")
-        return response.json() if response.json() else {}
-    except Exception as e:
-        st.error(f"Erro ao carregar usuários: {e}")
+        users_ref = db.collection("usuarios").stream()
+        return {doc.id: doc.to_dict() for doc in users_ref}
+    except Exception:
         return {}
 
 def salvar_usuario(login, dados):
-    try:
-        requests.put(f"{FIREBASE_URL}/usuarios/{login}.json", json=dados)
-    except Exception as e:
-        st.error(f"Erro ao salvar usuário: {e}")
+    db = inicializar_db()
+    if db:
+        # Garante que o login seja a chave do documento
+        db.collection("usuarios").document(login.lower().strip()).set(dados, merge=True)
 
 # --- ESFORÇO (Logs de Atividade) ---
 def carregar_esforco():
+    db = inicializar_db()
+    if not db: return []
     try:
-        response = requests.get(f"{FIREBASE_URL}/esforco.json")
-        res_json = response.json()
-        return res_json if isinstance(res_json, list) else []
+        doc = db.collection("config").document("esforco_logs").get()
+        if doc.exists:
+            return doc.to_dict().get("dados", [])
+        return []
     except Exception:
         return []
 
-def salvar_esforco(logs):
-    try:
-        requests.put(f"{FIREBASE_URL}/esforco.json", json=logs)
-    except Exception as e:
-        st.error(f"Erro ao salvar esforço: {e}")
+def salvar_esforco(lista_esforco):
+    db = inicializar_db()
+    if db:
+        db.collection("config").document("esforco_logs").set({"dados": lista_esforco})
 
 # --- DIÁRIO DE BORDO ---
 def carregar_diario():
+    db = inicializar_db()
+    if not db: return []
     try:
-        response = requests.get(f"{FIREBASE_URL}/diario.json")
-        res_json = response.json()
-        return res_json if isinstance(res_json, list) else []
+        doc = db.collection("config").document("diario_situacoes").get()
+        if doc.exists:
+            return doc.to_dict().get("dados", [])
+        return []
     except Exception:
         return []
 
-def salvar_diario(diario):
-    try:
-        requests.put(f"{FIREBASE_URL}/diario.json", json=diario)
-    except Exception as e:
-        st.error(f"Erro ao salvar diário: {e}")
+def salvar_diario(lista_diario):
+    db = inicializar_db()
+    if db:
+        db.collection("config").document("diario_situacoes").set({"dados": lista_diario})
 
-# --- CONFIGURAÇÕES GERAIS ---
+# --- DEPARTAMENTOS ---
 def carregar_departamentos():
+    db = inicializar_db()
+    if not db: return ["Operação", "Logística", "RH", "TI"]
     try:
-        response = requests.get(f"{FIREBASE_URL}/configuracoes/departamentos.json")
-        res_json = response.json()
-        return res_json if res_json else ["Operação", "Logística", "RH", "TI"]
+        doc = db.collection("config").document("departamentos").get()
+        if doc.exists:
+            return doc.to_dict().get("lista", ["Operação", "Logística", "RH", "TI"])
+        return ["Operação", "Logística", "RH", "TI"]
     except Exception:
         return ["Geral"]
 
 def salvar_departamentos(lista):
-    try:
-        requests.put(f"{FIREBASE_URL}/configuracoes/departamentos.json", json=lista)
-    except Exception as e:
-        st.error(f"Erro ao salvar departamentos: {e}")
+    db = inicializar_db()
+    if db:
+        db.collection("config").document("departamentos").set({"lista": lista})
