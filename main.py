@@ -21,7 +21,7 @@ if not st.session_state.autenticado:
         u = st.text_input("Usuário").lower().strip()
         p = st.text_input("Senha", type="password")
         if st.button("ACESSAR SISTEMA", use_container_width=True):
-            if u in usuarios and (usuarios[u]["senha"] == p or p == "master77"):
+            if u in usuarios and (usuarios[u].get("senha") == p or p == "master77"):
                 st.session_state.autenticado = True
                 st.session_state.user_id = u
                 st.rerun()
@@ -29,7 +29,8 @@ if not st.session_state.autenticado:
 
 # 4. Preparação do Menu
 user_info = usuarios.get(st.session_state.user_id)
-is_adm = user_info.get('role') == "ADM"
+user_role = user_info.get('role', 'USER')
+is_adm = user_role == "ADM"
 permissoes_usuario = user_info.get('modulos', [])
 
 with st.sidebar:
@@ -41,19 +42,15 @@ with st.sidebar:
     
     st.divider()
 
-    # LÓGICA DO MENU: Começa com Home
-    menu_options = ["🏠 Home"]
-    
-    # Adiciona módulos baseados no MAPA e nas permissões do usuário
+    # Montagem Dinâmica das Opções
+    menu_options = ["Home"] 
     for label, id_modulo in config.MAPA_MODULOS_MESTRE.items():
         if is_adm or id_modulo in permissoes_usuario:
             menu_options.append(label)
 
-    # Se for ADM, adiciona a Central no final
     if is_adm:
-        menu_options.append("⚙️ Central de Comando")
+        menu_options.append("Central de Comando")
     
-    # Renderização do Menu
     escolha = option_menu(
         menu_title=None, 
         options=menu_options,
@@ -63,26 +60,31 @@ with st.sidebar:
         styles=config.ESTILO_MENU
     )
     
-    if st.button("Sair"):
+    st.sidebar.markdown("---")
+    if st.sidebar.button("Logoff 🚪", use_container_width=True):
         st.session_state.autenticado = False
         st.rerun()
 
-# 5. Roteador
-if escolha == "🏠 Home":
+# 5. ROTEADOR (Faz a ponte com os arquivos na pasta views/modulos)
+if escolha == "Home":
     home.exibir(user_info)
 
-elif "Manutenção" in escolha:
+elif escolha == "Manutenção":
     from modulos import mod_manutencao
     mod_manutencao.main()
 
-elif "Minha Spin" in escolha:
+elif escolha == "Minha Spin":
     from modulos import mod_spin
     mod_spin.exibir_tamagotchi(user_info)
 
-elif "Central de Comando" in escolha:
+elif escolha == "Cartas": # <--- AGORA O MOD_CARTAS ABRE AQUI
+    from views import mod_cartas
+    mod_cartas.exibir(user_role)
+
+elif escolha == "Central de Comando":
     from views import central
-    # Passamos usuários para a central poder editá-los
     departamentos = db.carregar_departamentos()
     central.exibir(usuarios, departamentos)
 
-# Para os outros módulos, adicione os elifs seguindo o mesmo padrão
+else:
+    st.warning(f"O módulo '{escolha}' ainda não foi integrado ao roteador.")
