@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit_option_menu import option_menu
 
 # Cores Oficiais
 AZUL_MARINHO = "#002366"
@@ -67,5 +68,37 @@ ESTILO_MENU = {
 }
 
 def configurar_pagina():
+    """Configura o layout básico e o CSS global do portal."""
     st.set_page_config(page_title="Hub King Star | Master", layout="wide", page_icon="👑")
     st.markdown(CSS_PORTAL, unsafe_allow_html=True)
+
+def desenhar_sidebar(user_info, menu_options):
+    """
+    Renderiza a foto, nome, cargo e o menu de navegação na lateral.
+    Retorna a opção selecionada pelo usuário.
+    """
+    with st.sidebar:
+        # Foto e Perfil do Usuário
+        foto_url = user_info.get('foto', 'https://www.w3schools.com/howto/img_avatar.png')
+        st.markdown(f'<img src="{foto_url}" class="profile-pic">', unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align:center; color:white;'>{user_info.get('nome', 'Usuário')}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align:center; color:#FFD700;'>{user_info.get('cargo', 'Analista')}</p>", unsafe_allow_html=True)
+        
+        st.divider()
+
+        # Renderização do Menu Dinâmico
+        escolha = option_menu(
+            menu_title=None, 
+            options=menu_options,
+            icons=[ICON_MAP.get(opt, "circle") for opt in menu_options],
+            menu_icon="cast", 
+            default_index=0,
+            styles=ESTILO_MENU
+        )
+        
+        st.sidebar.markdown("---")
+        if st.sidebar.button("Logoff 🚪", use_container_width=True):
+            st.session_state.autenticado = False
+            st.rerun()
+            
+    return escolha
