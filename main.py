@@ -1,6 +1,6 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
-import database as db
+from modulos import database as db
 import configuracao as config
 from datetime import datetime
 
