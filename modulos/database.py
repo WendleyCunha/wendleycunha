@@ -77,3 +77,12 @@ def carregar_dados_spin():
         doc = db.collection("config").document("spin_data").get()
         return doc.to_dict() if doc.exists else {"km_atual": 138000, "historico": []}
     except: return {"km_atual": 138000, "historico": []}
+
+def carregar_departamentos():
+    doc = db_firestore.collection("configuracoes").document("departamentos").get()
+    if doc.exists:
+        return doc.to_dict().get("lista", ["OPERAÇÃO", "TI", "RH"])
+    return ["OPERAÇÃO", "TI", "RH"]
+
+def salvar_departamentos(lista):
+    db_firestore.collection("configuracoes").document("departamentos").set({"lista": lista})
