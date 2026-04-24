@@ -10,10 +10,10 @@ from modulos import database as db  # Ajustado para sua nova estrutura
 
 def gerar_word_memoria(dados):
     try:
-        # Busca o template na pasta assets (ajuste o caminho se necessário)
-        template_path = "assets/carta_preenchida.docx"
+        # Busca o template na pasta ajuste o caminho se necessário)
+        template_path = "carta_preenchida.docx"
         if not os.path.exists(template_path):
-            # Se não houver pasta assets, tenta na raiz (fallback)
+        
             template_path = "carta_preenchida.docx"
             
         doc = Document(template_path)
@@ -34,7 +34,7 @@ def gerar_word_memoria(dados):
         doc.save(buffer)
         return buffer.getvalue()
     except Exception as e:
-        st.error(f"⚠️ Erro ao processar Word: Verifique se o arquivo 'assets/carta_preenchida.docx' existe.")
+        st.error(f"⚠️ Erro ao processar Word: Verifique se o arquivo 'carta_preenchida.docx' existe.")
         return None
 
 # --- FUNÇÕES DE APOIO ---
