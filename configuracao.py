@@ -1,59 +1,28 @@
 # configuracao.py
 import streamlit as st
 
-# =========================================================
-# CONFIGURAÇÕES TÉCNICAS E VISUAIS
-# =========================================================
-
 def configurar_pagina():
-    st.set_page_config(
-        page_title="Hub King Star | Master", 
-        layout="wide", 
-        page_icon="👑"
-    )
+    st.set_page_config(page_title="Hub King Star | Premium", layout="wide", page_icon="👑")
 
-# Mapa de tradução para ID interno
-MAPA_MODULOS_MESTRE = {
-    "🏗️ Manutenção": "manutencao",
-    "🎯 Processos": "processos",
-    "📄 RH Docs": "rh",
-    "📊 Operação": "operacao",
-    "🚗 Minha Spin": "spin",
-    "🚌 Passagens": "passagens",
-    "🎫 Tickets": "tickets",
-}
-
-# Mapa de ícones do menu
-ICON_MAP = {
-    "🏠 Home": "house",
-    "🏗️ Manutenção": "tools",
-    "🎯 Processos": "diagram-3",
-    "📄 RH Docs": "file-earmark-text",
-    "📊 Operação": "box-seam",
-    "🚗 Minha Spin": "car-front-fill",
-    "🚌 Passagens": "bus-front",
-    "🎫 Tickets": "ticket-perforated",
-    "⚙️ Central de Comando": "shield-lock"
-}
-
-# Estilos CSS Customizados
-CSS_CUSTOM = """
+# Estilo Premium isolado
+CSS_PREMIUM = """
     <style>
-    .stApp { background-color: #f8fafc; }
-    .profile-pic {
-        width: 100px; height: 100px; border-radius: 50%;
-        object-fit: cover; border: 3px solid #002366;
-        margin: 0 auto 10px auto; display: block;
+    [data-testid="stSidebar"] { background-color: #F8F9FA; }
+    div.stButton > button:first-child {
+        background-color: #D4AF37; color: white; border: none; border-radius: 8px; transition: 0.3s;
     }
-    .reminder-card {
-        background: white; padding: 15px; border-radius: 10px;
-        border-left: 5px solid #ef4444; margin-bottom: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    .gold-title {
+        text-align: center; color: #D4AF37; font-family: 'Trebuchet MS', sans-serif; font-weight: bold;
     }
-    .diary-card {
-        background: white; padding: 15px; border-radius: 10px;
-        border-left: 5px solid #3b82f6; margin-bottom: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
+    /* Estilos das abas e cards podem vir para cá também */
     </style>
 """
+
+# Simplificamos os ícones para bater com o menu dinâmico
+ICON_MAP = {
+    "🏠 Home": "house",
+    "📄 Cartas": "file-earmark-text",
+    "🎯 Processos": "diagram-3",
+    "🚗 Minha Spin": "car-front-fill",
+    "⚙️ Central": "shield-lock"
+}
