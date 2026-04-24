@@ -1,13 +1,35 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 
-# 1. Cores Oficiais
-AZUL_MARINHO = "#002366"
+# --- CORES E ESTILO ---
+AZUL_MARINHO = "#001a3d" 
 DOURADO_KING = "#B8860B"
-BRANCO_PURO = "#FFFFFF"
-CINZA_CLARO = "rgba(255, 255, 255, 0.7)"
+BRANCO = "#FFFFFF"
 
-# 2. Dicionários de Dados (O QUE ESTAVA FALTANDO)
+CSS_PORTAL = f"""
+<style>
+    .stApp {{ background-color: #f4f7f9; }}
+    [data-testid="stSidebar"] {{ background-color: {AZUL_MARINHO} !important; }}
+    
+    /* Foto de Perfil */
+    .profile-pic {{
+        width: 110px; height: 110px; border-radius: 50%;
+        object-fit: cover; border: 3px solid {DOURADO_KING};
+        margin: 10px auto; display: block;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.5);
+    }}
+
+    /* Botão Principal */
+    div.stButton > button {{
+        background-color: {DOURADO_KING} !important;
+        color: white !important;
+        font-weight: bold; border-radius: 8px;
+        border: none; width: 100%;
+    }}
+</style>
+"""
+
+# --- DADOS MESTRE ---
 MAPA_MODULOS_MESTRE = {
     "Manutenção": "manutencao",
     "Processos": "processos",
@@ -28,57 +50,39 @@ ICON_MAP = {
     "Central de Comando": "shield-lock"
 }
 
-# 3. Estilos CSS e Menu
-CSS_PORTAL = f"""
-    <style>
-    .stApp {{ background-color: #f1f5f9; }}
-    [data-testid="stSidebar"] {{ background-color: {AZUL_MARINHO} !important; }}
-    [data-testid="stSidebar"] .stText, [data-testid="stSidebar"] p {{ color: {BRANCO_PURO} !important; }}
-    div.stButton > button:first-child {{
-        background-color: {DOURADO_KING} !important;
-        color: {BRANCO_PURO} !important;
-        border: none; font-weight: bold;
-    }}
-    .profile-pic {{
-        width: 110px; height: 110px; border-radius: 50%;
-        object-fit: cover; border: 3px solid {DOURADO_KING};
-        margin: 10px auto; display: block;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
-    }}
-    </style>
-"""
-
 ESTILO_MENU = {
     "container": {"padding": "5px!important", "background-color": "transparent"},
-    "icon": {"color": BRANCO_PURO, "font-size": "18px"}, 
+    "icon": {"color": BRANCO, "font-size": "18px"}, 
     "nav-link": {
-        "color": CINZA_CLARO, "font-size": "15px", "text-align": "left", "margin": "5px",
-        "--hover-color": "rgba(184, 134, 11, 0.2)"
+        "color": "rgba(255,255,255,0.7)", "font-size": "14px", 
+        "text-align": "left", "margin": "5px", "--hover-color": "#264653"
     },
     "nav-link-selected": {
-        "background-color": DOURADO_KING, "color": BRANCO_PURO, "font-weight": "bold"
-    },
+        "background-color": DOURADO_KING, "color": BRANCO, "font-weight": "bold"
+    }
 }
 
-# 4. Funções de Interface
+# --- FUNÇÕES ---
 def configurar_pagina():
-    st.set_page_config(page_title="Hub King Star | Master", layout="wide", page_icon="👑")
+    st.set_page_config(page_title="Hub King Star", layout="wide", page_icon="👑")
     st.markdown(CSS_PORTAL, unsafe_allow_html=True)
 
 def desenhar_sidebar(user_info, menu_options):
     with st.sidebar:
-        foto_url = user_info.get('foto', 'https://www.w3schools.com/howto/img_avatar.png')
-        st.markdown(f'<img src="{foto_url}" class="profile-pic">', unsafe_allow_html=True)
-        st.markdown(f"<h3 style='text-align:center; color:{BRANCO_PURO}; margin-bottom:0;'>{user_info.get('nome', 'Usuário')}</h3>", unsafe_allow_html=True)
-        st.markdown(f"<p style='text-align:center; color:{DOURADO_KING}; font-weight:bold;'>{user_info.get('cargo', 'Analista')}</p>", unsafe_allow_html=True)
+        foto = user_info.get('foto', 'https://www.w3schools.com/howto/img_avatar.png')
+        st.markdown(f'<img src="{foto}" class="profile-pic">', unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align:center; color:white;'>{user_info.get('nome', 'Usuário')}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align:center; color:{DOURADO_KING};'>{user_info.get('cargo', 'Analista')}</p>", unsafe_allow_html=True)
         st.divider()
+
         escolha = option_menu(
             menu_title=None, options=menu_options,
             icons=[ICON_MAP.get(opt, "circle") for opt in menu_options],
-            menu_icon="cast", default_index=0, styles=ESTILO_MENU
+            styles=ESTILO_MENU
         )
-        st.markdown("---")
-        if st.button("Logoff 🚪", use_container_width=True):
+        
+        st.write("") # Espaçador
+        if st.button("Sair 🚪"):
             st.session_state.autenticado = False
             st.rerun()
     return escolha
