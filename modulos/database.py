@@ -10,12 +10,16 @@ def inicializar_db():
     """Inicializa e persiste a conexão com o Firebase no session_state."""
     if "db" not in st.session_state:
         try:
+            # Verifica se a chave existe nos Secrets do app atual
             if "textkey" not in st.secrets:
-                st.error("Chave 'textkey' não encontrada no st.secrets.")
+                st.error("Chave 'textkey' não encontrada nos Secrets deste Streamlit app.")
                 return None
                 
             key_dict = json.loads(st.secrets["textkey"])
             creds = service_account.Credentials.from_service_account_info(key_dict)
+            
+            # ID DO PROJETO CONFIRMADO VIA CONSOLE GOOGLE CLOUD
+            #
             st.session_state.db = firestore.Client(credentials=creds, project="bancowendley")
         except Exception as e:
             st.error(f"Erro crítico na inicialização do Firebase: {e}")
@@ -25,10 +29,11 @@ def inicializar_db():
 # --- FUNÇÕES DE USUÁRIOS ---
 
 def carregar_usuarios_firebase():
-    """Carrega usuários com sistema de retentativa para evitar quedas de login."""
+    """Carrega usuários com sistema de retentativa para evitar quedas."""
     db = inicializar_db()
     if not db: return {}
     
+    # Sistema de 3 tentativas para lidar com instabilidades
     for tentativa in range(3):
         try:
             users_ref = db.collection("usuarios").stream()
@@ -37,19 +42,22 @@ def carregar_usuarios_firebase():
             if tentativa < 2:
                 time.sleep(1)
                 continue
+            # Mostra o erro real nos logs se a cota ou conexão falhar
             print(f"Erro ao carregar usuários (Tentativa {tentativa+1}): {e}")
             return {}
 
 def salvar_usuario(uid, dados):
+    """Salva ou atualiza usuário forçando ID em minúsculo para evitar erros de login."""
     db = inicializar_db()
     if db:
-        # Remove espaços acidentais que impedem o login
-        db.collection("usuarios").document(uid.strip()).set(dados, merge=True)
+        # Resolve o erro de 'ADMIN' não encontrado convertendo para minúsculo
+        id_limpo = uid.lower().strip()
+        db.collection("usuarios").document(id_limpo).set(dados, merge=True)
 
 def deletar_usuario(uid):
     db = inicializar_db()
     if db:
-        db.collection("usuarios").document(uid).delete()
+        db.collection("usuarios").document(uid.lower().strip()).delete()
 
 # --- FUNÇÕES DE CONFIGURAÇÃO E LOGS ---
 
@@ -130,6 +138,7 @@ def salvar_departamentos(lista):
 
 def carregar_dados_spin():
     db = inicializar_db()
+    # Dados base conforme seu histórico de manutenção
     default_spin = {"km_atual": 138000, "historico": []}
     if not db: return default_spin
     try:
