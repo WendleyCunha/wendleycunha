@@ -14,62 +14,69 @@ def obter_usuarios_cache():
 # --- 2. CONFIGURAÇÃO INICIAL E ESTILO ---
 config.configurar_pagina()
 
-# Injeção de CSS de Alta Prioridade - ELIMINANDO O FUNDO BRANCO/PRETO
+# CSS de Alta Prioridade para Harmonia Total
 st.markdown("""
     <style>
-        /* 1. FORÇA O FUNDO DA SIDEBAR (AZUL AÇO CLARO) */
-        section[data-testid="stSidebar"] {
+        /* 1. FUNDO DA SIDEBAR (AZUL AÇO) */
+        [data-testid="stSidebar"] {
             background-color: #4682B4 !important;
-            background-image: linear-gradient(180deg, #4682B4 0%, #35638a 100%) !important;
+            background-image: linear-gradient(180deg, #4682B4 0%, #2c5270 100%) !important;
         }
 
-        /* 2. EXPLODE QUALQUER FUNDO BRANCO OU ESCURO INTERNO */
-        [data-testid="stSidebar"] div, 
-        [data-testid="stSidebar"] section,
+        /* 2. ELIMINAÇÃO DO RETÂNGULO BRANCO (FORÇA TRANSPARÊNCIA EM TODOS OS NÍVEIS) */
+        [data-testid="stSidebar"] > div:first-child,
+        [data-testid="stSidebar"] [data-testid="stVerticalBlock"],
         [data-testid="stSidebarNav"] {
             background-color: transparent !important;
         }
 
-        /* 3. TEXTOS, ÍCONES E LABELS (BRANCO E DOURADO) */
-        [data-testid="stSidebar"] * {
+        /* 3. TEXTO E ÍCONES (BRANCO E DOURADO) */
+        [data-testid="stSidebar"] .stText, 
+        [data-testid="stSidebar"] label, 
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span {
             color: #FFFFFF !important;
         }
 
-        /* Ícones especificamente em Dourado */
+        /* Prioridade Dourada para Ícones */
         [data-testid="stSidebar"] svg {
             fill: #FFD700 !important;
         }
 
-        /* 4. BOTÕES E LINKS (DOURADO NO HOVER) */
-        [data-testid="stSidebar"] button, 
+        /* 4. ESTILIZAÇÃO DO MENU (REMOVENDO O ASPECTO DE BLOCO) */
         [data-testid="stSidebarNavItems"] a {
             background-color: rgba(255, 255, 255, 0.05) !important;
-            border-radius: 10px !important;
-            margin-bottom: 5px !important;
-            transition: 0.3s;
+            border-radius: 8px !important;
+            margin: 4px 0px !important;
+            border: 1px solid rgba(255, 215, 0, 0.1) !important;
+            transition: all 0.3s ease;
         }
 
-        [data-testid="stSidebar"] button:hover, 
+        /* 5. ITEM SELECIONADO - DOURADO PRIORIDADE 0 */
+        [data-testid="stSidebarNavItems"] a[aria-current="page"] {
+            background-color: #B8860B !important; /* Dourado Sólido */
+            color: #FFFFFF !important;
+            border: 1px solid #FFD700 !important;
+            font-weight: bold !important;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.2) !important;
+        }
+
+        /* Hover - Brilho Dourado */
         [data-testid="stSidebarNavItems"] a:hover {
             color: #FFD700 !important;
-            background-color: rgba(255, 215, 0, 0.2) !important;
+            background-color: rgba(255, 215, 0, 0.15) !important;
             border: 1px solid #FFD700 !important;
         }
 
-        /* 5. DESTAQUE PARA O ITEM SELECIONADO */
-        [data-testid="stSidebarNavItems"] a[aria-current="page"] {
-            background-color: #B8860B !important; /* Dourado Escuro */
-            color: white !important;
-            font-weight: bold !important;
+        /* 6. BOTÃO SAIR (MAIS DISCRETO) */
+        [data-testid="stSidebar"] button {
+            background-color: rgba(0, 0, 0, 0.2) !important;
+            color: #FFD700 !important;
+            border: 1px solid #FFD700 !important;
+            border-radius: 5px !important;
         }
 
-        /* 6. CORREÇÃO PARA A FOTO DE PERFIL (Círculo Dourado) */
-        [data-testid="stSidebar"] img {
-            border: 3px solid #FFD700 !important;
-            border-radius: 50% !important;
-        }
-
-        /* 7. REMOVE O HEADER DO STREAMLIT QUE PODE ESTAR PRETO */
+        /* 7. REMOVE O HEADER SUPERIOR */
         header[data-testid="stHeader"] {
             background-color: rgba(0,0,0,0) !important;
         }
@@ -88,7 +95,7 @@ if "user_id" not in st.session_state:
 usuarios = obter_usuarios_cache()
 
 if not usuarios and not st.session_state.autenticado:
-    st.error("Erro: Não foi possível carregar a base de usuários do Firebase.")
+    st.error("Erro: Não foi possível carregar a base de usuários.")
     st.stop()
 
 # --- 5. LÓGICA DE LOGIN ---
@@ -105,7 +112,7 @@ if not user_info and user_id and usuarios:
     st.session_state.user_info = user_info
 
 if user_info is None:
-    st.warning("⚠️ Perfil não identificado. Por favor, refaça o login.")
+    st.warning("⚠️ Perfil não identificado.")
     if st.button("Ir para Login"):
         st.session_state.autenticado = False
         st.rerun()
