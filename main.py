@@ -4,9 +4,8 @@ from modulos import database as db
 from views import home, login
 
 # --- 1. FUNÇÃO DE CACHE ---
-@st.cache_data(ttl=600)  # Mantém os dados na memória por 10 minutos
+@st.cache_data(ttl=600)
 def obter_usuarios_cache():
-    """Busca usuários no Firebase apenas uma vez a cada 10 minutos."""
     try:
         return db.carregar_usuarios_firebase()
     except Exception:
@@ -15,66 +14,62 @@ def obter_usuarios_cache():
 # --- 2. CONFIGURAÇÃO INICIAL E ESTILO ---
 config.configurar_pagina()
 
-# Injeção de CSS Refinado - ELIMINAÇÃO TOTAL DO PRETO
+# Injeção de CSS de Alta Prioridade - ELIMINANDO O FUNDO BRANCO/PRETO
 st.markdown("""
     <style>
-        /* 1. FUNDO DA BARRA LATERAL (GRADIENTE AZUL) */
-        [data-testid="stSidebar"] {
+        /* 1. FORÇA O FUNDO DA SIDEBAR (AZUL AÇO CLARO) */
+        section[data-testid="stSidebar"] {
             background-color: #4682B4 !important;
-            background-image: linear-gradient(180deg, #002366 0%, #001a4d 100%) !important;
+            background-image: linear-gradient(180deg, #4682B4 0%, #35638a 100%) !important;
         }
 
-        /* 2. REMOVE FUNDO PRETO DO CONTAINER DE NAVEGAÇÃO NATIVO */
-        [data-testid="stSidebarNav"], 
-        [data-testid="stSidebarNav"] ul {
+        /* 2. EXPLODE QUALQUER FUNDO BRANCO OU ESCURO INTERNO */
+        [data-testid="stSidebar"] div, 
+        [data-testid="stSidebar"] section,
+        [data-testid="stSidebarNav"] {
             background-color: transparent !important;
         }
-        
-        /* 3. TEXTOS E LABELS EM BRANCO PARA CONTRASTE */
-        [data-testid="stSidebar"] .stText, 
-        [data-testid="stSidebar"] label, 
-        [data-testid="stSidebar"] p,
-        [data-testid="stSidebar"] span,
-        [data-testid="stSidebarNavItems"] a {
+
+        /* 3. TEXTOS, ÍCONES E LABELS (BRANCO E DOURADO) */
+        [data-testid="stSidebar"] * {
             color: #FFFFFF !important;
-            text-decoration: none !important;
         }
 
-        /* 4. ESTILIZAÇÃO DOS ÍCONES (DOURADO) */
+        /* Ícones especificamente em Dourado */
         [data-testid="stSidebar"] svg {
             fill: #FFD700 !important;
         }
 
-        /* 5. EFEITO HOVER E ITEM SELECIONADO (DOURADO) */
-        /* Garante que o item ativo ou focado brilhe em dourado */
-        [data-testid="stSidebarNavItems"] a:hover,
-        [data-testid="stSidebarNavItems"] a[aria-current="page"] {
-            color: #FFD700 !important;
-            background-color: rgba(255, 215, 0, 0.15) !important;
-            border-left: 4px solid #FFD700 !important;
+        /* 4. BOTÕES E LINKS (DOURADO NO HOVER) */
+        [data-testid="stSidebar"] button, 
+        [data-testid="stSidebarNavItems"] a {
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            border-radius: 10px !important;
+            margin-bottom: 5px !important;
+            transition: 0.3s;
         }
 
-        /* 6. ESTILIZAÇÃO DE BOTÕES (CASO EXISTA NA SIDEBAR) */
-        [data-testid="stSidebar"] button {
-            color: #FFFFFF !important;
-            background-color: transparent !important;
-            border: 1px solid rgba(255, 215, 0, 0.3) !important;
-            border-radius: 8px !important;
-        }
-        [data-testid="stSidebar"] button:hover {
+        [data-testid="stSidebar"] button:hover, 
+        [data-testid="stSidebarNavItems"] a:hover {
             color: #FFD700 !important;
+            background-color: rgba(255, 215, 0, 0.2) !important;
             border: 1px solid #FFD700 !important;
-            background-color: rgba(255, 215, 0, 0.1) !important;
         }
 
-        /* 7. AJUSTE DE SELECTBOX (AZUL ESCURO COM BORDA DOURADA) */
-        div[data-baseweb="select"] > div {
-            background-color: #001a4d !important;
-            border-color: #FFD700 !important;
+        /* 5. DESTAQUE PARA O ITEM SELECIONADO */
+        [data-testid="stSidebarNavItems"] a[aria-current="page"] {
+            background-color: #B8860B !important; /* Dourado Escuro */
             color: white !important;
+            font-weight: bold !important;
         }
-        
-        /* 8. ELIMINA LINHA DIVISORA CINZA */
+
+        /* 6. CORREÇÃO PARA A FOTO DE PERFIL (Círculo Dourado) */
+        [data-testid="stSidebar"] img {
+            border: 3px solid #FFD700 !important;
+            border-radius: 50% !important;
+        }
+
+        /* 7. REMOVE O HEADER DO STREAMLIT QUE PODE ESTAR PRETO */
         header[data-testid="stHeader"] {
             background-color: rgba(0,0,0,0) !important;
         }
@@ -94,7 +89,6 @@ usuarios = obter_usuarios_cache()
 
 if not usuarios and not st.session_state.autenticado:
     st.error("Erro: Não foi possível carregar a base de usuários do Firebase.")
-    st.info("Isso pode ser limite de cota atingido ou erro de conexão.")
     st.stop()
 
 # --- 5. LÓGICA DE LOGIN ---
@@ -106,12 +100,10 @@ if not st.session_state.autenticado:
 user_id = st.session_state.get('user_id')
 user_info = st.session_state.get('user_info')
 
-# Recuperação em caso de refresh (F5)
 if not user_info and user_id and usuarios:
     user_info = usuarios.get(user_id)
     st.session_state.user_info = user_info
 
-# Blindagem contra quedas de sessão inesperadas
 if user_info is None:
     st.warning("⚠️ Perfil não identificado. Por favor, refaça o login.")
     if st.button("Ir para Login"):
@@ -119,7 +111,6 @@ if user_info is None:
         st.rerun()
     st.stop()
 
-# Definições de permissão para uso no roteamento
 user_role = user_info.get('role', 'OPERACIONAL')
 is_adm = (user_role == "ADM")
 permissoes = user_info.get('modulos', [])
@@ -133,40 +124,32 @@ for label, id_modulo in config.MAPA_MODULOS_MESTRE.items():
 if is_adm: 
     menu_options.append("Central de Comando")
 
-# Chamada da sidebar (definida em configuracao.py)
+# Chamada da sidebar
 escolha = config.desenhar_sidebar(user_info, menu_options)
 
-# --- 8. ROTEADOR CENTRAL (LOADER DE VIEWS) ---
+# --- 8. ROTEADOR CENTRAL ---
 try:
     if escolha == "Home":
         home.exibir(user_info)
-
     elif "Manutenção" in escolha:
         from modulos import mod_manutencao
         mod_manutencao.main()
-
     elif "Minha Spin" in escolha:
         from modulos import mod_spin
         mod_spin.exibir_tamagotchi(user_info)
-
     elif "RH Docs" in escolha or "Cartas" in escolha:
         from views import mod_cartas
         mod_cartas.exibir(user_role)
-
     elif "Processos" in escolha:
         from views import mod_processos
         mod_processos.exibir(user_role=user_role)
-
     elif "Central de Comando" in escolha:
         from views import central
         try:
             departamentos = db.carregar_departamentos()
         except Exception:
             departamentos = ["OPERAÇÃO", "TI", "RH", "LOGÍSTICA", "ADM"]
-        
         central.exibir(is_adm)
-
 except Exception as e:
     st.error(f"Erro ao carregar o módulo '{escolha}'.")
-    st.info("Verifique a conexão ou a estrutura do módulo.")
-    print(f"Erro detalhado no console: {e}")
+    print(f"Erro detalhado: {e}")
