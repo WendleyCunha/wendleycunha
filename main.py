@@ -15,52 +15,68 @@ def obter_usuarios_cache():
 # --- 2. CONFIGURAÇÃO INICIAL E ESTILO ---
 config.configurar_pagina()
 
-# Injeção de CSS Refinado - ELIMINANDO O PRETO E MANTENDO O DOURADO
+# Injeção de CSS Refinado - ELIMINAÇÃO TOTAL DO PRETO
 st.markdown("""
     <style>
-        /* Fundo da barra lateral - Azul Marinho King Star */
+        /* 1. FUNDO DA BARRA LATERAL (GRADIENTE AZUL) */
         [data-testid="stSidebar"] {
             background-color: #002366 !important;
             background-image: linear-gradient(180deg, #002366 0%, #001a4d 100%) !important;
         }
+
+        /* 2. REMOVE FUNDO PRETO DO CONTAINER DE NAVEGAÇÃO NATIVO */
+        [data-testid="stSidebarNav"], 
+        [data-testid="stSidebarNav"] ul {
+            background-color: transparent !important;
+        }
         
-        /* Texto e labels na barra lateral */
+        /* 3. TEXTOS E LABELS EM BRANCO PARA CONTRASTE */
         [data-testid="stSidebar"] .stText, 
         [data-testid="stSidebar"] label, 
         [data-testid="stSidebar"] p,
-        [data-testid="stSidebar"] span {
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebarNavItems"] a {
             color: #FFFFFF !important;
+            text-decoration: none !important;
         }
 
-        /* Estilização de botões e links do menu na sidebar */
-        [data-testid="stSidebar"] button {
-            color: #FFFFFF !important;
-            background-color: transparent !important;
-            border-radius: 8px !important;
-        }
-
-        /* Efeito Hover no menu da sidebar - TOQUE DOURADO */
-        [data-testid="stSidebar"] button:hover {
-            color: #FFD700 !important;
-            background-color: rgba(255, 215, 0, 0.1) !important;
-            border: 1px solid #FFD700 !important;
-        }
-
-        /* Ajuste de cor para selectbox e inputs dentro da barra lateral */
-        [data-testid="stSidebar"] div[data-baseweb="select"] > div {
-            background-color: #001a4d !important;
-            border-color: #FFD700 !important;
-            color: white !important;
-        }
-
-        /* Cor do ícone do menu dropdown e outros SVGs na sidebar */
+        /* 4. ESTILIZAÇÃO DOS ÍCONES (DOURADO) */
         [data-testid="stSidebar"] svg {
             fill: #FFD700 !important;
         }
 
-        /* Ajuste do Título da Sidebar para Dourado */
-        [data-testid="stSidebarNav"] :: some-selector-if-needed {
-             color: #FFD700 !important;
+        /* 5. EFEITO HOVER E ITEM SELECIONADO (DOURADO) */
+        /* Garante que o item ativo ou focado brilhe em dourado */
+        [data-testid="stSidebarNavItems"] a:hover,
+        [data-testid="stSidebarNavItems"] a[aria-current="page"] {
+            color: #FFD700 !important;
+            background-color: rgba(255, 215, 0, 0.15) !important;
+            border-left: 4px solid #FFD700 !important;
+        }
+
+        /* 6. ESTILIZAÇÃO DE BOTÕES (CASO EXISTA NA SIDEBAR) */
+        [data-testid="stSidebar"] button {
+            color: #FFFFFF !important;
+            background-color: transparent !important;
+            border: 1px solid rgba(255, 215, 0, 0.3) !important;
+            border-radius: 8px !important;
+        }
+        [data-testid="stSidebar"] button:hover {
+            color: #FFD700 !important;
+            border: 1px solid #FFD700 !important;
+            background-color: rgba(255, 215, 0, 0.1) !important;
+        }
+
+        /* 7. AJUSTE DE SELECTBOX (AZUL ESCURO COM BORDA DOURADA) */
+        div[data-baseweb="select"] > div {
+            background-color: #001a4d !important;
+            border-color: #FFD700 !important;
+            color: white !important;
+        }
+        
+        /* 8. ELIMINA LINHA DIVISORA CINZA */
+        header[data-testid="stHeader"] {
+            background-color: rgba(0,0,0,0) !important;
         }
     </style>
 """, unsafe_allow_html=True)
