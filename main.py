@@ -15,28 +15,45 @@ def obter_usuarios_cache():
 # --- 2. CONFIGURAÇÃO INICIAL E ESTILO ---
 config.configurar_pagina()
 
-# Injeção de CSS para personalizar a Barra Lateral (Sidebar)
+# Injeção de CSS Refinado para a Barra Lateral
 st.markdown("""
     <style>
-        /* Cor de fundo da barra lateral */
+        /* Fundo da barra lateral */
         [data-testid="stSidebar"] {
             background-color: #1E1E1E !important;
         }
         
-        /* Cor dos textos, ícones e labels na barra lateral */
-        [data-testid="stSidebar"] * {
+        /* Texto e labels na barra lateral */
+        [data-testid="stSidebar"] .stText, 
+        [data-testid="stSidebar"] label, 
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span {
             color: #FFFFFF !important;
         }
 
-        /* Ajuste de cor para selectbox dentro da barra lateral */
+        /* Estilização de botões e links do menu na sidebar */
+        [data-testid="stSidebar"] button {
+            color: #FFFFFF !important;
+            background-color: transparent !important;
+            border-radius: 8px !important;
+        }
+
+        /* Efeito Hover no menu da sidebar - Mantendo o toque dourado */
+        [data-testid="stSidebar"] button:hover {
+            color: #FFD700 !important;
+            background-color: #2D2D2D !important;
+        }
+
+        /* Ajuste de cor para selectbox e inputs dentro da barra lateral */
         [data-testid="stSidebar"] div[data-baseweb="select"] > div {
             background-color: #2D2D2D !important;
             border-color: #444 !important;
-        }
-        
-        /* Estilo para os botões do menu na sidebar */
-        [data-testid="stSidebar"] button {
             color: white !important;
+        }
+
+        /* Garante que o ícone do menu dropdown também fique visível */
+        [data-testid="stSidebar"] svg {
+            fill: white !important;
         }
     </style>
 """, unsafe_allow_html=True)
