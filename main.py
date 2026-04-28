@@ -20,7 +20,7 @@ st.markdown("""
     <style>
         /* 1. FUNDO DA BARRA LATERAL (GRADIENTE AZUL) */
         [data-testid="stSidebar"] {
-            background-color: #4169E1 !important;
+            background-color: #4682B4 !important;
             background-image: linear-gradient(180deg, #002366 0%, #001a4d 100%) !important;
         }
 
