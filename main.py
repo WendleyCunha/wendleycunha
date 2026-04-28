@@ -15,12 +15,13 @@ def obter_usuarios_cache():
 # --- 2. CONFIGURAÇÃO INICIAL E ESTILO ---
 config.configurar_pagina()
 
-# Injeção de CSS Refinado para a Barra Lateral
+# Injeção de CSS Refinado - ELIMINANDO O PRETO E MANTENDO O DOURADO
 st.markdown("""
     <style>
-        /* Fundo da barra lateral */
+        /* Fundo da barra lateral - Azul Marinho King Star */
         [data-testid="stSidebar"] {
-            background-color: #1E1E1E !important;
+            background-color: #002366 !important;
+            background-image: linear-gradient(180deg, #002366 0%, #001a4d 100%) !important;
         }
         
         /* Texto e labels na barra lateral */
@@ -38,22 +39,28 @@ st.markdown("""
             border-radius: 8px !important;
         }
 
-        /* Efeito Hover no menu da sidebar - Mantendo o toque dourado */
+        /* Efeito Hover no menu da sidebar - TOQUE DOURADO */
         [data-testid="stSidebar"] button:hover {
             color: #FFD700 !important;
-            background-color: #2D2D2D !important;
+            background-color: rgba(255, 215, 0, 0.1) !important;
+            border: 1px solid #FFD700 !important;
         }
 
         /* Ajuste de cor para selectbox e inputs dentro da barra lateral */
         [data-testid="stSidebar"] div[data-baseweb="select"] > div {
-            background-color: #2D2D2D !important;
-            border-color: #444 !important;
+            background-color: #001a4d !important;
+            border-color: #FFD700 !important;
             color: white !important;
         }
 
-        /* Garante que o ícone do menu dropdown também fique visível */
+        /* Cor do ícone do menu dropdown e outros SVGs na sidebar */
         [data-testid="stSidebar"] svg {
-            fill: white !important;
+            fill: #FFD700 !important;
+        }
+
+        /* Ajuste do Título da Sidebar para Dourado */
+        [data-testid="stSidebarNav"] :: some-selector-if-needed {
+             color: #FFD700 !important;
         }
     </style>
 """, unsafe_allow_html=True)
