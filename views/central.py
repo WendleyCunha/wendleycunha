@@ -133,40 +133,7 @@ def exibir(is_adm):
             else:
                 st.warning(f"Sem dados para o período de {d_ini} até {d_fim}.")
 
-    # --- 2. DASHBOARD (BI IDENTICO AO ANTIGO) ---
-    elif menu == "📊 DASHBOARD":
-        st.subheader("📊 Business Intelligence - Esforço")
-        df = pd.DataFrame(logs)
-        
-        if not df.empty and 'status' in df.columns:
-            df_fin = df[df['status'] == 'Finalizado'].copy()
-            if not df_fin.empty:
-                # Filtros
-                col_f1, col_f2 = st.columns(2)
-                user_f = col_f1.selectbox("Filtrar Usuário", ["Todos"] + sorted(df_fin['usuario'].unique().tolist()))
-                mot_f = col_f2.selectbox("Filtrar Motivo", ["Todos"] + sorted(df_fin['motivo'].unique().tolist()))
-                
-                if user_f != "Todos": df_fin = df_fin[df_fin['usuario'] == user_f]
-                if mot_f != "Todos": df_fin = df_fin[df_fin['motivo'] == mot_f]
-
-                # Métricas em destaque
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Atividades", len(df_fin))
-                m2.metric("Tempo Total", formatar_duracao_h_min(df_fin['duracao_min'].sum()))
-                m3.metric("Média/Atividade", f"{df_fin['duracao_min'].mean():.1f} min")
-
-                # Gráficos
-                g1, g2 = st.columns(2)
-                with g1:
-                    fig_mot = px.bar(df_fin.groupby('motivo')['duracao_min'].sum().reset_index(), 
-                                   x='motivo', y='duracao_min', title="Minutos por Motivo", color='motivo')
-                    st.plotly_chart(fig_mot, use_container_width=True)
-                with g2:
-                    fig_user = px.pie(df_fin, names='usuario', title="Distribuição de Esforço", hole=0.3)
-                    st.plotly_chart(fig_user, use_container_width=True)
-            else:
-                st.warning("Sem dados finalizados para gerar gráficos.")
-
+    
     # --- 3. GESTÃO DE USUÁRIOS (COM EDIÇÃO E EXCLUSÃO) ---
     elif menu == "👥 USUÁRIOS":
         st.subheader("Gestão de Acessos King Star")
