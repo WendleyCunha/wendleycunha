@@ -3,16 +3,19 @@ from streamlit_option_menu import option_menu
 from datetime import datetime, timedelta
 import pandas as pd
 
-# 1. SEMPRE O PRIMEIRO COMANDO ST
-st.set_page_config(page_title="Hub King Star", layout="wide", page_icon="👑")
+# --- 1. CONFIGURAÇÃO (Sempre o primeiro comando st) ---
+def configurar_pagina():
+    # Se der erro aqui, certifique-se que não há nenhum st.write antes desta linha
+    if 'configurado' not in st.session_state:
+        st.set_page_config(page_title="Hub King Star", layout="wide", page_icon="👑")
+        st.session_state.configurado = True
 
-# --- CONSTANTES E CORES EXECUTIVAS KING STAR ---
-COLOR_BG = "#FFFFFF"           # Branco (Fundo principal)
-COLOR_SIDEBAR = "#1A1C22"      # Grafite (Sidebar)
+# --- 2. CORES E CSS ---
+COLOR_BG = "#FFFFFF"           # Branco
+COLOR_SIDEBAR = "#1A1C22"      # Grafite
 COLOR_GOLD = "#B8860B"         # Dourado
-COLOR_TEXT = "#2D2E33"         # Cinza escuro (Texto)
+COLOR_TEXT = "#2D2E33"         # Cinza escuro
 
-# --- CSS APLICADO LOGO APÓS AS CONSTANTES ---
 CSS_ESTAVEL = f"""
 <style>
     .stApp {{ background-color: {COLOR_BG} !important; color: {COLOR_TEXT} !important; }}
@@ -28,17 +31,15 @@ CSS_ESTAVEL = f"""
     .stAlert {{ background-color: #F8F9FA !important; border: 1px solid #E9ECEF !important; color: {COLOR_TEXT} !important; }}
 </style>
 """
-st.markdown(CSS_ESTAVEL, unsafe_allow_html=True)
 
-# --- INICIALIZAÇÃO DO ESTADO ---
+# --- 3. DADOS INICIAIS ---
 if 'atividades' not in st.session_state:
     st.session_state.atividades = [
-        {"id": 101, "tarefa": "Manutenção Preventiva Spin", "data": datetime.now().date(), "status": "Em Execução"},
-        {"id": 102, "tarefa": "Revisão Processo Logístico", "data": datetime.now().date() - timedelta(days=2), "status": "Em Execução"},
-        {"id": 103, "tarefa": "Checklist Qualidade", "data": datetime.now().date() - timedelta(days=8), "status": "Em Execução"}
+        {"id": 1, "tarefa": "Ajuste de Fluxo Operacional", "data": datetime.now().date()},
+        {"id": 2, "tarefa": "Checklist de Melhoria Contínua", "data": datetime.now().date() - timedelta(days=2)}
     ]
 
-# --- FUNÇÕES DE INTERFACE ---
+# --- 4. FUNÇÕES DO SEU CÓDIGO ORIGINAL ---
 def desenhar_sidebar(user_info, menu_options):
     mapa_icones = {
         "Home": "house", "Manutenção": "tools", "Processos": "diagram-3",
@@ -50,33 +51,34 @@ def desenhar_sidebar(user_info, menu_options):
     with st.sidebar:
         foto = user_info.get('foto') or 'https://www.w3schools.com/howto/img_avatar.png'
         st.markdown(f'<img src="{foto}" class="profile-pic">', unsafe_allow_html=True)
-        st.markdown(f'<p class="sb-nome">{user_info.get("nome", "Wendley")}</p>', unsafe_allow_html=True)
+        st.markdown(f'<p class="sb-nome">{user_info.get("nome", "Usuário")}</p>', unsafe_allow_html=True)
         st.markdown(f'<p class="sb-cargo">{user_info.get("cargo", "Analista")}</p>', unsafe_allow_html=True)
         st.divider()
-        
+
         escolha = option_menu(
-            menu_title=None, options=menu_options, icons=icones_dinamicos, 
+            menu_title=None, 
+            options=menu_options,
+            icons=icones_dinamicos, 
             styles={
                 "container": {"background-color": "transparent"},
                 "nav-link": {"color": "#CCC", "font-size": "14px", "text-align": "left"},
                 "nav-link-selected": {"background-color": COLOR_GOLD, "color": "white"}
             }
         )
+        
         if st.button("Sair do Sistema"):
             st.session_state.autenticado = False
             st.rerun()
     return escolha
 
+# --- 5. NOVA LÓGICA: CENTRAL DE COMANDO ---
 def tela_central_comando():
     st.title("🛡️ Central de Comando")
     
+    # Filtros de Data
     with st.expander("🔍 Filtros de Data", expanded=True):
         col1, col2 = st.columns([1, 2])
-        with col1:
-            tipo_filtro = st.selectbox(
-                "Período de visualização",
-                ["Hoje", "Últimos 7 dias", "Mês anterior", "Personalizado"]
-            )
+        tipo_filtro = col1.selectbox("Período", ["Hoje", "Últimos 7 dias", "Mês anterior", "Personalizado"])
         
         hoje = datetime.now().date()
         data_ini, data_fim = hoje, hoje
@@ -84,64 +86,53 @@ def tela_central_comando():
         if tipo_filtro == "Últimos 7 dias":
             data_ini = hoje - timedelta(days=7)
         elif tipo_filtro == "Mês anterior":
-            primeiro_dia_mes_atual = hoje.replace(day=1)
-            data_fim = primeiro_dia_mes_atual - timedelta(days=1)
+            data_fim = hoje.replace(day=1) - timedelta(days=1)
             data_ini = data_fim.replace(day=1)
         elif tipo_filtro == "Personalizado":
-            with col2:
-                periodo = st.date_input("Intervalo", [hoje, hoje])
-                if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
-                    data_ini, data_fim = periodo
+            periodo = col2.date_input("Selecione", [hoje, hoje])
+            if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
+                data_ini, data_fim = periodo
 
-    aba_monitoramento, aba_dash = st.tabs(["📊 Monitoramento", "📈 Dash"])
+    aba_moni, aba_dash = st.tabs(["📊 Monitoramento", "📈 Dash"])
 
-    df_atividades = pd.DataFrame(st.session_state.atividades)
-    
-    if not df_atividades.empty:
-        # Garantir que a coluna data seja comparável
-        df_atividades['data'] = pd.to_datetime(df_atividades['data']).dt.date
-        df_filtrado = df_atividades[
-            (df_atividades['data'] >= data_ini) & 
-            (df_atividades['data'] <= data_fim)
-        ]
+    # Filtragem
+    df = pd.DataFrame(st.session_state.atividades)
+    if not df.empty:
+        df['data'] = pd.to_datetime(df['data']).dt.date
+        df_filtrado = df[(df['data'] >= data_ini) & (df['data'] <= data_fim)]
     else:
         df_filtrado = pd.DataFrame()
 
-    with aba_monitoramento:
-        st.subheader("Atividades em Tempo Real")
+    with aba_moni:
         if df_filtrado.empty:
-            st.warning("Nenhuma atividade encontrada para este período.")
+            st.info("Nada para mostrar neste período.")
         else:
-            for idx, row in df_filtrado.iterrows():
-                with st.container():
-                    c1, c2, c3 = st.columns([0.5, 3, 1])
-                    c1.markdown(f"**ID:** {row['id']}")
-                    c2.markdown(f"**Tarefa:** {row['tarefa']} \n\n *Início: {row['data'].strftime('%d/%m/%Y')}*")
-                    if c3.button("Finalizar", key=f"encerrar_{row['id']}"):
-                        st.session_state.atividades = [a for a in st.session_state.atividades if a['id'] != row['id']]
-                        st.toast(f"Atividade {row['id']} encerrada!")
-                        st.rerun()
-                    st.divider()
+            for _, row in df_filtrado.iterrows():
+                c1, c2, c3 = st.columns([1, 3, 1])
+                c1.write(f"ID #{row['id']}")
+                c2.write(f"**{row['tarefa']}**")
+                if c3.button("Encerrar", key=f"btn_{row['id']}"):
+                    st.session_state.atividades = [a for a in st.session_state.atividades if a['id'] != row['id']]
+                    st.rerun()
+                st.divider()
 
     with aba_dash:
-        st.subheader("Indicadores do Período")
-        if df_filtrado.empty:
-            st.info("Sem dados para gerar gráficos.")
-        else:
-            m1, m2 = st.columns(2)
-            m1.metric("Total no Período", len(df_filtrado))
-            m2.metric("Hoje", len(df_atividades[df_atividades['data'] == hoje]))
+        if not df_filtrado.empty:
+            st.metric("Atividades Ativas", len(df_filtrado))
             st.bar_chart(df_filtrado['data'].value_counts())
-            st.dataframe(df_filtrado, use_container_width=True)
 
-# --- EXECUÇÃO ---
-u_info = {"nome": "Wendley Leite Cunha", "cargo": "Analista de Melhoria Contínua Jr.", "foto": None}
-opcoes = ["Home", "Manutenção", "Processos", "Operação", "Central de Comando"]
+# --- 6. EXECUÇÃO DO APP ---
+configurar_pagina()
+st.markdown(CSS_ESTAVEL, unsafe_allow_html=True)
 
-escolha = desenhar_sidebar(u_info, opcoes)
+# Dados do Usuário (Simulado)
+user_info = {"nome": "Wendley Leite Cunha", "cargo": "Melhoria Contínua Jr"}
+menu_options = ["Home", "Central de Comando", "Processos", "Operação"]
+
+escolha = desenhar_sidebar(user_info, menu_options)
 
 if escolha == "Central de Comando":
     tela_central_comando()
 else:
-    st.title(f"Módulo: {escolha}")
-    st.info("Página em construção.")
+    st.subheader(f"Módulo {escolha}")
+    st.write("Em desenvolvimento...")
