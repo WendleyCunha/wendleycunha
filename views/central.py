@@ -4,7 +4,7 @@ import plotly.express as px
 from datetime import datetime, timedelta
 from modulos import database as db
 
-# Configurações de Módulos
+# Configurações de Módulos (Identico ao seu mapeamento)
 MAPA_MODULOS = {
     "🏗️ Manutenção": "manutencao",
     "🎯 Processos": "processos",
@@ -52,6 +52,7 @@ def exibir(is_adm):
                     c1.markdown(f"👤 **{atv['usuario']}**")
                     c2.markdown(f"📌 {atv['motivo']}\n<small>{atv.get('detalhes', '')}</small>", unsafe_allow_html=True)
                     
+                    # Cálculo de tempo decorrido
                     try:
                         inicio_dt = datetime.fromisoformat(atv['inicio']).replace(tzinfo=None)
                         decorrido = (datetime.now() - inicio_dt).seconds // 60
@@ -75,51 +76,47 @@ def exibir(is_adm):
         else:
             st.info("Ninguém online no momento.")
 
-    # --- 2. DASHBOARD COM FILTRO DE DATA ---
+    # --- 2. DASHBOARD (BI COM FILTROS DE DATA) ---
     elif menu == "📊 DASHBOARD":
         st.subheader("📊 Business Intelligence - Esforço")
         df = pd.DataFrame(logs)
         
         if not df.empty and 'status' in df.columns:
-            # Preparação das datas
+            # Tratamento de data: converte para datetime e remove fuso horário para comparação
             df['inicio_dt'] = pd.to_datetime(df['inicio']).dt.tz_localize(None)
             df_fin = df[df['status'] == 'Finalizado'].copy()
             
             if not df_fin.empty:
-                # Filtro de Período Estilizado
+                # Seção de Filtros de Período
                 with st.container(border=True):
-                    st.markdown("### 📅 Filtro de Período")
+                    st.write("### 📅 Período de Análise")
                     hoje = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
                     
                     filtro_data = st.segmented_control(
-                        "Selecione:",
+                        "Selecione o intervalo:",
                         ["Hoje", "7 Dias", "Mês", "Personalizado"],
                         default="Hoje"
                     )
 
-                    data_inicio, data_fim = hoje, hoje + timedelta(days=1)
+                    data_inicio = hoje
+                    data_fim = hoje.replace(hour=23, minute=59, second=59)
                     
-                    if filtro_data == "Hoje":
-                        data_inicio = hoje
-                        data_fim = hoje.replace(hour=23, minute=59, second=59)
-                    elif filtro_data == "7 Dias":
+                    if filtro_data == "7 Dias":
                         data_inicio = hoje - timedelta(days=7)
-                        data_fim = hoje.replace(hour=23, minute=59, second=59)
                     elif filtro_data == "Mês":
                         data_inicio = hoje.replace(day=1)
-                        data_fim = hoje.replace(hour=23, minute=59, second=59)
                     elif filtro_data == "Personalizado":
-                        c_p1, c_p2 = st.columns(2)
-                        d_ini = c_p1.date_input("De:", hoje)
-                        d_fim = c_p2.date_input("Até:", hoje)
+                        col_p1, col_p2 = st.columns(2)
+                        d_ini = col_p1.date_input("Data Inicial", hoje)
+                        d_fim = col_p2.date_input("Data Final", hoje)
                         data_inicio = datetime.combine(d_ini, datetime.min.time())
                         data_fim = datetime.combine(d_fim, datetime.max.time())
 
-                # Aplicação do Filtro Temporal
+                # Aplicar filtro de data no DataFrame
                 df_fin = df_fin[(df_fin['inicio_dt'] >= data_inicio) & (df_fin['inicio_dt'] <= data_fim)]
 
                 if not df_fin.empty:
-                    # Filtros de Contexto
+                    # Filtros de Usuário e Motivo
                     col_f1, col_f2 = st.columns(2)
                     user_f = col_f1.selectbox("Filtrar Usuário", ["Todos"] + sorted(df_fin['usuario'].unique().tolist()))
                     mot_f = col_f2.selectbox("Filtrar Motivo", ["Todos"] + sorted(df_fin['motivo'].unique().tolist()))
@@ -127,8 +124,9 @@ def exibir(is_adm):
                     if user_f != "Todos": df_fin = df_fin[df_fin['usuario'] == user_f]
                     if mot_f != "Todos": df_fin = df_fin[df_fin['motivo'] == mot_f]
 
-                    # Métricas
                     st.divider()
+
+                    # Métricas em destaque
                     m1, m2, m3 = st.columns(3)
                     m1.metric("Atividades", len(df_fin))
                     m2.metric("Tempo Total", formatar_duracao_h_min(df_fin['duracao_min'].sum()))
@@ -138,20 +136,21 @@ def exibir(is_adm):
                     g1, g2 = st.columns(2)
                     with g1:
                         fig_mot = px.bar(df_fin.groupby('motivo')['duracao_min'].sum().reset_index(), 
-                                       x='motivo', y='duracao_min', title="Minutos por Motivo", 
-                                       color='motivo', color_discrete_sequence=px.colors.qualitative.Pastel)
+                                       x='motivo', y='duracao_min', title="Minutos por Motivo", color='motivo')
                         st.plotly_chart(fig_mot, use_container_width=True)
                     with g2:
-                        fig_user = px.pie(df_fin, names='usuario', title="Distribuição de Esforço", hole=0.4)
+                        fig_user = px.pie(df_fin, names='usuario', title="Distribuição de Esforço", hole=0.3)
                         st.plotly_chart(fig_user, use_container_width=True)
                 else:
-                    st.info("Nenhuma atividade finalizada encontrada para este período.")
+                    st.info("Nenhuma atividade encontrada para o período selecionado.")
             else:
-                st.warning("Sem dados finalizados no histórico.")
+                st.warning("Sem dados finalizados para gerar gráficos.")
 
     # --- 3. GESTÃO DE USUÁRIOS ---
     elif menu == "👥 USUÁRIOS":
         st.subheader("Gestão de Acessos King Star")
+        
+        # Formulário de Cadastro
         with st.expander("➕ Cadastrar Novo Colaborador", expanded=False):
             with st.form("novo_user"):
                 c1, c2 = st.columns(2)
@@ -174,12 +173,14 @@ def exibir(is_adm):
                         st.success("Usuário criado!")
                         st.rerun()
 
+        # Lista de Usuários com Ações
         st.divider()
         for uid, info in usuarios_dict.items():
             with st.container(border=True):
                 col_u1, col_u2, col_u3 = st.columns([3, 2, 1])
                 col_u1.write(f"**{info['nome']}** ({uid})")
                 col_u2.caption(f"Cargo: {info['role']} | Depto: {info['depto']}")
+                
                 if col_u3.button("🗑️", key=f"del_{uid}"):
                     st.warning("Funcionalidade de exclusão pendente no banco.")
 
@@ -193,6 +194,7 @@ def exibir(is_adm):
                 db.salvar_departamentos(list(set(departamentos)))
                 st.rerun()
         
+        st.write("Setores Ativos:")
         cols_d = st.columns(4)
         for i, d in enumerate(sorted(departamentos)):
             cols_d[i % 4].code(d)
