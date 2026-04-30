@@ -55,6 +55,22 @@ def configurar_pagina():
     st.markdown(CSS_ESTAVEL, unsafe_allow_html=True)
 
 def desenhar_sidebar(user_info, menu_options):
+    # 1. Mapeamento de ícones (Centralizado e fácil de dar manutenção)
+    mapa_icones = {
+        "Home": "house",
+        "Manutenção": "tools",
+        "Processos": "diagram-3",
+        "RH Docs": "file-text",
+        "Operação": "box",
+        "Minha Spin": "car",
+        "Cartas": "envelope",
+        "Central de Comando": "shield-lock"
+    }
+
+    # 2. Gerar lista de ícones DINÂMICA baseada apenas no que vai aparecer
+    # Se a opção não estiver no mapa, ele usa "circle" como padrão
+    icones_dinamicos = [mapa_icones.get(opt, "circle") for opt in menu_options]
+
     with st.sidebar:
         foto = user_info.get('foto') or 'https://www.w3schools.com/howto/img_avatar.png'
         st.markdown(f'<img src="{foto}" class="profile-pic">', unsafe_allow_html=True)
@@ -63,9 +79,11 @@ def desenhar_sidebar(user_info, menu_options):
         
         st.divider()
 
+        # 3. O componente agora recebe duas listas de mesmo tamanho sempre
         escolha = option_menu(
-            menu_title=None, options=menu_options,
-            icons=["house", "tools", "diagram-3", "file-text", "box", "car", "envelope", "shield-lock"],
+            menu_title=None, 
+            options=menu_options,
+            icons=icones_dinamicos, 
             styles={
                 "container": {"background-color": "transparent"},
                 "nav-link": {"color": "#CCC", "font-size": "14px", "text-align": "left"},
