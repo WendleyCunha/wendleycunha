@@ -22,7 +22,7 @@ ROADMAP = [
 MOTIVOS_PADRAO = ["Reunião", "Pedido de Posicionamento", "Elaboração de Documentos", "Anotação Interna (Sem Dash)"]
 DEPARTAMENTOS = ["CX", "PQI","Compras", "Logística", "TI", "Financeiro", "RH", "Fiscal", "Operações", "Comercial", "Diretoria"]
 
-def exibir(user_role="OPERACIONAL"):
+def exibir(user_role="ADM"):
     # 1. ESTILO CSS
     st.markdown("""
     <style>
