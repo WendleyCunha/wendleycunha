@@ -52,22 +52,23 @@ def exibir(is_adm):
                     c1.markdown(f"👤 **{atv['usuario']}**")
                     c2.markdown(f"📌 {atv['motivo']}\n<small>{atv.get('detalhes', '')}</small>", unsafe_allow_html=True)
                     
-                    # Cálculo de tempo decorrido
                     try:
                         inicio_dt = datetime.fromisoformat(atv['inicio']).replace(tzinfo=None)
                         decorrido = (datetime.now() - inicio_dt).seconds // 60
                         c3.metric("Tempo", f"{decorrido} min")
-                    except: c3.write("⏰ N/A")
+                    except: 
+                        c3.write("⏰ N/A")
                     
                     key_btn = f"adm_stop_{atv['usuario']}_{atv['inicio']}".replace(":", "")
                     if c4.button("🛑 Encerrar", key=key_btn):
                         agora = datetime.now()
-                        duracao = (agora - inicio_dt).total_seconds() / 60
                         
+                        # AJUSTE: Filtra por usuário E por timestamp de início para não fechar tudo de uma vez
                         for a in logs:
-                            if a['usuario'] == atv['usuario'] and a['status'] == 'Em andamento':
+                            if a['usuario'] == atv['usuario'] and a['inicio'] == atv['inicio']:
                                 a['status'] = 'Finalizado'
                                 a['fim'] = agora.isoformat()
+                                duracao = (agora - inicio_dt).total_seconds() / 60
                                 a['duracao_min'] = round(duracao, 2)
                         
                         db.salvar_esforco(logs)
@@ -75,6 +76,62 @@ def exibir(is_adm):
                         st.rerun()
         else:
             st.info("Ninguém online no momento.")
+
+    # --- 2. DASHBOARD (COM FILTRO DE DATA) ---
+    elif menu == "📊 DASHBOARD":
+        st.subheader("📊 Business Intelligence - Esforço")
+        df = pd.DataFrame(logs)
+        
+        if not df.empty and 'status' in df.columns:
+            # Converter para datetime para permitir filtros
+            df['data_inicio'] = pd.to_datetime(df['inicio']).dt.date
+            
+            # Novo: Filtro de Intervalo de Datas
+            with st.container(border=True):
+                col_d1, col_d2 = st.columns([1, 2])
+                hoje = datetime.now().date()
+                opcoes_periodo = ["Hoje", "Últimos 7 dias", "Mês Atual", "Tudo"]
+                periodo = col_d1.selectbox("Período", opcoes_periodo, index=0)
+
+                if periodo == "Hoje": d_ini = d_fim = hoje
+                elif periodo == "Últimos 7 dias": d_ini, d_fim = hoje - pd.Timedelta(days=7), hoje
+                elif periodo == "Mês Atual": d_ini, d_fim = hoje.replace(day=1), hoje
+                else: d_ini, d_fim = df['data_inicio'].min(), hoje
+
+                if periodo == "Personalizado": # Opcional: Adicionar se quiser datas livres
+                    d_ini, d_fim = col_d2.date_input("Escolha o intervalo", [d_ini, d_fim])
+
+            # Aplicar Filtros de Status e Data
+            df_fin = df[(df['status'] == 'Finalizado') & 
+                        (df['data_inicio'] >= d_ini) & 
+                        (df['data_inicio'] <= d_fim)].copy()
+
+            if not df_fin.empty:
+                # Filtros de Seleção (Usuário/Motivo)
+                col_f1, col_f2 = st.columns(2)
+                user_f = col_f1.selectbox("Filtrar Usuário", ["Todos"] + sorted(df_fin['usuario'].unique().tolist()))
+                mot_f = col_f2.selectbox("Filtrar Motivo", ["Todos"] + sorted(df_fin['motivo'].unique().tolist()))
+                
+                if user_f != "Todos": df_fin = df_fin[df_fin['usuario'] == user_f]
+                if mot_f != "Todos": df_fin = df_fin[df_fin['motivo'] == mot_f]
+
+                # Métricas
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Atividades", len(df_fin))
+                m2.metric("Tempo Total", formatar_duracao_h_min(df_fin['duracao_min'].sum()))
+                m3.metric("Média/Atividade", f"{df_fin['duracao_min'].mean():.1f} min")
+
+                # Gráficos
+                g1, g2 = st.columns(2)
+                with g1:
+                    fig_mot = px.bar(df_fin.groupby('motivo')['duracao_min'].sum().reset_index(), 
+                                   x='motivo', y='duracao_min', title="Minutos por Motivo", color='motivo')
+                    st.plotly_chart(fig_mot, use_container_width=True)
+                with g2:
+                    fig_user = px.pie(df_fin, names='usuario', title="Distribuição de Esforço", hole=0.3)
+                    st.plotly_chart(fig_user, use_container_width=True)
+            else:
+                st.warning(f"Sem dados para o período de {d_ini} até {d_fim}.")
 
     # --- 2. DASHBOARD (BI IDENTICO AO ANTIGO) ---
     elif menu == "📊 DASHBOARD":
