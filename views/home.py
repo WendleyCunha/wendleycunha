@@ -150,49 +150,64 @@ def exibir(user_info):
                                 st.rerun()
                     except: continue
 
-    # --- ABA 3: AGENDA (CORRIGIDA PARA MESES FUTUROS) ---
+    # --- ABA 3: AGENDA (PESSOAL vs EQUIPE) ---
     with tab_agenda:
         tipo_age = st.radio("Filtro de Agenda:", ["Minha Agenda", "Agenda da Equipe"], horizontal=True)
         agenda_raw = []
 
-        # Coleta PQI (Futuros)
-        for p in projs:
-            for l in p.get('lembretes', []):
-                try:
-                    data_dt = datetime.strptime(l['data_hora'].split(" ")[0], "%d/%m/%Y").date()
-                    if data_dt > hoje_dt:
-                        agenda_raw.append({
-                            "Data_Obj": data_dt, 
-                            "Data": data_dt.strftime("%d/%m/%Y"),
-                            "Origem": f"PQI: {p['titulo']}", 
-                            "Descrição": l['texto'], 
-                            "Quem": "Equipe"
-                        })
-                except: continue
-
-        # Coleta Diário (Futuros)
+        # 1. Coleta do DIÁRIO (Onde temos o dono da atividade)
         for sit in diario:
             if sit.get('status') == "Pendente" and sit.get('lembrete', "N/A") != "N/A":
                 try:
                     data_dt = datetime.strptime(sit['lembrete'].split(" ")[0], "%d/%m/%Y").date()
+                    
+                    # Regra de Visualização:
+                    # Se for "Minha Agenda", só mostra se o usuário logado for o dono.
+                    dono = sit.get('usuario', 'S/I')
+                    if tipo_age == "Minha Agenda" and dono != user_info['nome']:
+                        continue
+                    
                     if data_dt > hoje_dt:
-                        if tipo_age == "Minha Agenda" and sit.get('usuario') != user_info['nome']:
-                            continue
                         agenda_raw.append({
                             "Data_Obj": data_dt,
                             "Data": data_dt.strftime("%d/%m/%Y"),
                             "Origem": f"DIÁRIO: {sit['depto']}", 
                             "Descrição": sit['solicitacao'], 
-                            "Quem": sit.get('usuario', 'S/I')
+                            "Responsável": dono
                         })
                 except: continue
+
+        # 2. Coleta de PROCESSOS (PQI)
+        # Nota: Como o PQI geralmente é um projeto da equipe, 
+        # ele aparecerá sempre na "Agenda da Equipe".
+        if tipo_age == "Agenda da Equipe":
+            for p in projs:
+                for l in p.get('lembretes', []):
+                    try:
+                        data_dt = datetime.strptime(l['data_hora'].split(" ")[0], "%d/%m/%Y").date()
+                        if data_dt > hoje_dt:
+                            agenda_raw.append({
+                                "Data_Obj": data_dt, 
+                                "Data": data_dt.strftime("%d/%m/%Y"),
+                                "Origem": f"PQI: {p['titulo']}", 
+                                "Descrição": l['texto'], 
+                                "Responsável": "Equipe/PQI"
+                            })
+                    except: continue
         
         if agenda_raw:
-            # Ordena pelo objeto de data real (Garante Maio após Abril)
+            # Ordenação Cronológica Real
             df_age = pd.DataFrame(agenda_raw).sort_values(by="Data_Obj")
-            st.dataframe(df_age[['Data', 'Origem', 'Descrição', 'Quem']], use_container_width=True, hide_index=True)
+            
+            # Exibição com a coluna "Responsável" para saber quem criou
+            st.dataframe(
+                df_age[['Data', 'Origem', 'Descrição', 'Responsável']], 
+                use_container_width=True, 
+                hide_index=True
+            )
         else: 
-            st.info("Sem compromissos para os próximos meses.")
+            mensagem = "Você não tem compromissos futuros." if tipo_age == "Minha Agenda" else "Sem compromissos na equipe."
+            st.info(mensagem)
 
     # --- ABA 4: NOVO ---
     with tab_novo:
