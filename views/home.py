@@ -20,6 +20,7 @@ def finalizar_atividade_atual(nome_usuario):
             inicio_str = act.get('inicio')
             if inicio_str:
                 try:
+                    # Garantindo que a comparação de tempo ignore fusos horários se necessário
                     inicio_dt = datetime.fromisoformat(inicio_str).replace(tzinfo=None)
                     duracao = (agora - inicio_dt).total_seconds() / 60
                     logs[idx]['duracao_min'] = round(duracao, 2)
@@ -29,19 +30,17 @@ def finalizar_atividade_atual(nome_usuario):
         db.salvar_esforco(logs)
 
 def exibir(user_info):
-    # --- Estilos Originais ---
+    # --- Estilos Aprimorados ---
     st.markdown("""
         <style>
-        .reminder-card {
-            background: white; padding: 15px; border-radius: 10px;
-            border-left: 5px solid #ef4444; margin-bottom: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        .reminder-card, .diary-card {
+            background: #ffffff; padding: 16px; border-radius: 12px;
+            margin-bottom: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            border-left: 6px solid;
         }
-        .diary-card {
-            background: white; padding: 15px; border-radius: 10px;
-            border-left: 5px solid #3b82f6; margin-bottom: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
+        .reminder-card { border-left-color: #ef4444; }
+        .diary-card { border-left-color: #3b82f6; }
+        .status-tag { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -55,45 +54,49 @@ def exibir(user_info):
     hoje_dt = datetime.now().date()
 
     tab_esforco, tab_pendentes, tab_agenda, tab_novo = st.tabs([
-        "⚡ Esforço Hoje", "🚀 Atividades Pendentes", "📅 Minha Agenda", "➕ Criar Lembrete"
+        "⚡ Esforço Hoje", "🚀 Pendências", "📅 Agenda", "➕ Novo"
     ])
 
     # --- ABA 1: ESFORÇO ---
     with tab_esforco:
         atv_ativa = next((a for a in atividades_log if a['usuario'] == user_info['nome'] and a['status'] == 'Em andamento'), None)
-        c1, c2 = st.columns(2)
+        c1, c2 = st.columns([1, 1.2])
+        
         with c1:
             if atv_ativa:
-                st.info(f"🚀 **Ativo:** {atv_ativa['motivo']}")
+                st.info(f"🚀 **Ativo agora:**\n\n**{atv_ativa['motivo']}**")
                 try:
                     inicio_dt = datetime.fromisoformat(atv_ativa['inicio']).replace(tzinfo=None)
                     decorrido = (datetime.now() - inicio_dt).seconds // 60
-                    st.write(f"Desde {inicio_dt.strftime('%H:%M')} ({decorrido} min)")
-                except: st.write("Iniciado agora")
-                if st.button("Finalizar Agora", type="secondary", use_container_width=True):
+                    st.caption(f"Iniciado às {inicio_dt.strftime('%H:%M')} ({decorrido} min decorridos)")
+                except: st.caption("Iniciado agora")
+                
+                if st.button("🏁 FINALIZAR TAREFA", type="secondary", use_container_width=True):
                     finalizar_atividade_atual(user_info['nome'])
                     st.rerun()
-            else: st.success("Pronto para começar!")
+            else: 
+                st.success("✨ Você está livre no momento!")
         
         with c2:
-            motivo_sel = st.selectbox("O que vai fazer agora?", motivos_gestao)
-            detalhes = st.text_input("Obs/Ticket")
-            if st.button("INICIAR TAREFA", type="primary", use_container_width=True):
-                finalizar_atividade_atual(user_info['nome'])
-                atividades_log.append({
-                    "usuario": user_info['nome'], "motivo": motivo_sel, "detalhes": detalhes, 
-                    "inicio": datetime.now().isoformat(), "fim": None, "status": "Em andamento", "duracao_min": 0
-                })
-                db.salvar_esforco(atividades_log)
-                st.rerun()
+            with st.expander("Iniciar nova atividade", expanded=not atv_ativa):
+                motivo_sel = st.selectbox("Categoria:", motivos_gestao)
+                detalhes = st.text_input("Observação ou Ticket:")
+                if st.button("INICIAR AGORA ⚡", type="primary", use_container_width=True):
+                    finalizar_atividade_atual(user_info['nome'])
+                    atividades_log.append({
+                        "usuario": user_info['nome'], "motivo": motivo_sel, "detalhes": detalhes, 
+                        "inicio": datetime.now().isoformat(), "fim": None, "status": "Em andamento", "duracao_min": 0
+                    })
+                    db.salvar_esforco(atividades_log)
+                    st.rerun()
 
-        st.divider()
+        st.subheader("Histórico de Hoje")
         meu_hist = [a for a in atividades_log if a['usuario'] == user_info['nome']]
         if meu_hist:
             df_meu = pd.DataFrame(meu_hist)
             df_meu['inicio_dt'] = pd.to_datetime(df_meu['inicio'], errors='coerce')
-            df_meu = df_meu.dropna(subset=['inicio_dt'])
-            df_meu = df_meu[df_meu['inicio_dt'].dt.date == hoje_dt].copy()
+            df_meu = df_meu[df_meu['inicio_dt'].dt.date == hoje_dt].sort_values('inicio_dt', ascending=False)
+            
             if not df_meu.empty:
                 df_meu['Hora'] = df_meu['inicio_dt'].dt.strftime('%H:%M')
                 df_meu['Tempo'] = df_meu['duracao_min'].apply(formatar_duracao_h_min)
@@ -101,34 +104,35 @@ def exibir(user_info):
 
     # --- ABA 2: PENDÊNCIAS ---
     with tab_pendentes:
-        tipo_pnd = st.radio("Visualizar:", ["Minhas Pendências", "Geral (Equipe)"], horizontal=True)
+        tipo_pnd = st.radio("Filtro visual:", ["Minhas Pendências", "Visão Equipe"], horizontal=True)
         col_pqi, col_dir = st.columns(2)
         
         with col_pqi:
             st.subheader("📌 Processos (PQI)")
             for p_idx, p in enumerate(projs):
-                if 'lembretes' in p:
-                    # Usamos lista para iteração segura ao remover itens
-                    for l_idx, l in enumerate(list(p['lembretes'])):
-                        try:
-                            data_l_dt = datetime.strptime(l['data_hora'].split(" ")[0], "%d/%m/%Y").date()
-                            if data_l_dt <= hoje_dt:
-                                is_atrasada = data_l_dt < hoje_dt
-                                st.markdown(f'''
-                                    <div class="reminder-card" style="border-left-color: {"#f87171" if is_atrasada else "#ef4444"};">
-                                        <small style="color:{"#f87171" if is_atrasada else "#ef4444"}; font-weight:bold;">{"⚠️ ATRASADA" if is_atrasada else "⏰ HOJE"}</small><br>
-                                        <strong>Projeto:</strong> {p["titulo"]}<br>
-                                        <strong>Tarefa:</strong> {l["texto"]}
-                                    </div>
-                                ''', unsafe_allow_html=True)
-                                if st.button("Concluir PQI", key=f"pnd_pqi_{p_idx}_{l_idx}"):
-                                    p['lembretes'].pop(l_idx)
-                                    db.salvar_projetos(projs)
-                                    st.rerun()
-                        except: continue
+                lembretes = p.get('lembretes', [])
+                # Iteração reversa para permitir remoção segura
+                for l_idx in range(len(lembretes) - 1, -1, -1):
+                    l = lembretes[l_idx]
+                    try:
+                        data_l_dt = datetime.strptime(l['data_hora'].split(" ")[0], "%d/%m/%Y").date()
+                        if data_l_dt <= hoje_dt:
+                            atrasado = data_l_dt < hoje_dt
+                            cor = "#f87171" if atrasado else "#ef4444"
+                            st.markdown(f'''
+                                <div class="reminder-card" style="border-left-color: {cor};">
+                                    <span class="status-tag" style="color:{cor};">{"⚠️ Atrasada" if atrasado else "⏰ Hoje"}</span><br>
+                                    <strong>{p["titulo"]}</strong><br>{l["texto"]}
+                                </div>
+                            ''', unsafe_allow_html=True)
+                            if st.button(f"Concluir", key=f"btn_pqi_{p_idx}_{l_idx}", use_container_width=True):
+                                p['lembretes'].pop(l_idx)
+                                db.salvar_projetos(projs)
+                                st.rerun()
+                    except: continue
 
         with col_dir:
-            st.subheader("📓 Diário")
+            st.subheader("📓 Diário de Bordo")
             for idx, sit in enumerate(diario):
                 if sit.get('status') == "Pendente" and sit.get('lembrete') != "N/A":
                     if tipo_pnd == "Minhas Pendências" and sit.get('usuario') != user_info['nome']:
@@ -136,98 +140,98 @@ def exibir(user_info):
                     try:
                         data_s_dt = datetime.strptime(sit['lembrete'].split(" ")[0], "%d/%m/%Y").date()
                         if data_s_dt <= hoje_dt:
-                            is_atrasada = data_s_dt < hoje_dt
+                            atrasado = data_s_dt < hoje_dt
                             st.markdown(f'''
                                 <div class="diary-card">
-                                    <small style="color:{'#ef4444' if is_atrasada else '#3b82f6'}; font-weight:bold;">{"🚨 ATRASADO" if is_atrasada else "📅 AGENDADO"}</small><br>
-                                    <strong>Solicitação:</strong> {sit["solicitacao"]}<br>
-                                    <strong>Depto:</strong> {sit["depto"]} | <strong>Por:</strong> {sit.get('usuario','S/I')}
+                                    <span class="status-tag" style="color:{'#ef4444' if atrasado else '#3b82f6'};">{"🚨 Atrasado" if atrasado else "📅 Agendado"}</span><br>
+                                    <strong>{sit["depto"]}:</strong> {sit["solicitacao"]}<br>
+                                    <small>Resp: {sit.get('usuario','S/I')}</small>
                                 </div>
                             ''', unsafe_allow_html=True)
-                            if st.button("Executado", key=f"pnd_dir_{idx}"):
+                            if st.button(f"Concluir", key=f"btn_dir_{idx}", use_container_width=True):
                                 sit['status'] = "Executado"
                                 db.salvar_diario(diario)
                                 st.rerun()
                     except: continue
 
-    # --- ABA 3: AGENDA (PESSOAL vs EQUIPE) ---
+    # --- ABA 3: AGENDA ---
     with tab_agenda:
-        tipo_age = st.radio("Filtro de Agenda:", ["Minha Agenda", "Agenda da Equipe"], horizontal=True)
+        tipo_age = st.radio("Visualizar compromissos de:", ["Apenas Meus", "Toda a Equipe"], horizontal=True)
         agenda_raw = []
 
-        # 1. Coleta do DIÁRIO (Onde temos o dono da atividade)
+        # 1. Dados do Diário
         for sit in diario:
             if sit.get('status') == "Pendente" and sit.get('lembrete', "N/A") != "N/A":
                 try:
                     data_dt = datetime.strptime(sit['lembrete'].split(" ")[0], "%d/%m/%Y").date()
-                    
-                    # Regra de Visualização:
-                    # Se for "Minha Agenda", só mostra se o usuário logado for o dono.
                     dono = sit.get('usuario', 'S/I')
-                    if tipo_age == "Minha Agenda" and dono != user_info['nome']:
-                        continue
+                    if tipo_age == "Apenas Meus" and dono != user_info['nome']: continue
                     
                     if data_dt > hoje_dt:
                         agenda_raw.append({
-                            "Data_Obj": data_dt,
-                            "Data": data_dt.strftime("%d/%m/%Y"),
-                            "Origem": f"DIÁRIO: {sit['depto']}", 
-                            "Descrição": sit['solicitacao'], 
-                            "Responsável": dono
+                            "Data_Ref": data_dt, "Data": data_dt.strftime("%d/%m/%Y"),
+                            "Origem": f"Diário ({sit['depto']})", "Tarefa": sit['solicitacao'], "Quem": dono
                         })
                 except: continue
 
-        # 2. Coleta de PROCESSOS (PQI)
-        # Nota: Como o PQI geralmente é um projeto da equipe, 
-        # ele aparecerá sempre na "Agenda da Equipe".
-        if tipo_age == "Agenda da Equipe":
-            for p in projs:
-                for l in p.get('lembretes', []):
-                    try:
-                        data_dt = datetime.strptime(l['data_hora'].split(" ")[0], "%d/%m/%Y").date()
-                        if data_dt > hoje_dt:
-                            agenda_raw.append({
-                                "Data_Obj": data_dt, 
-                                "Data": data_dt.strftime("%d/%m/%Y"),
-                                "Origem": f"PQI: {p['titulo']}", 
-                                "Descrição": l['texto'], 
-                                "Responsável": "Equipe/PQI"
-                            })
-                    except: continue
+        # 2. Dados do PQI (Filtro por equipe se necessário, aqui mostramos tudo que for futuro)
+        for p in projs:
+            for l in p.get('lembretes', []):
+                try:
+                    data_dt = datetime.strptime(l['data_hora'].split(" ")[0], "%d/%m/%Y").date()
+                    if data_dt > hoje_dt:
+                        agenda_raw.append({
+                            "Data_Ref": data_dt, "Data": data_dt.strftime("%d/%m/%Y"),
+                            "Origem": f"PQI: {p['titulo']}", "Tarefa": l['texto'], "Quem": "Equipe"
+                        })
+                except: continue
         
         if agenda_raw:
-            # Ordenação Cronológica Real
-            df_age = pd.DataFrame(agenda_raw).sort_values(by="Data_Obj")
-            
-            # Exibição com a coluna "Responsável" para saber quem criou
-            st.dataframe(
-                df_age[['Data', 'Origem', 'Descrição', 'Responsável']], 
-                use_container_width=True, 
-                hide_index=True
-            )
+            df_age = pd.DataFrame(agenda_raw).sort_values(by="Data_Ref")
+            st.dataframe(df_age[['Data', 'Origem', 'Tarefa', 'Quem']], use_container_width=True, hide_index=True)
         else: 
-            mensagem = "Você não tem compromissos futuros." if tipo_age == "Minha Agenda" else "Sem compromissos na equipe."
-            st.info(mensagem)
+            st.info("Nenhum compromisso futuro encontrado.")
 
-    # --- ABA 4: NOVO ---
+    # --- ABA 4: NOVO AGENDAMENTO ---
     with tab_novo:
-        st.subheader("🎯 Criar Agendamento Direto")
-        with st.form("form_novo_main"):
-            tipo = st.radio("Vincular a:", ["Processos (PQI)", "Situações Diárias (Diário)"], horizontal=True)
-            txt_lembrete = st.text_input("O que precisa ser feito?")
-            c_data, c_hora = st.columns(2)
-            d_agendada = c_data.date_input("Data do Lembrete")
-            h_agendada = c_hora.time_input("Hora do Lembrete")
-            proj_vinc = st.selectbox("Projeto (Se PQI):", [p['titulo'] for p in projs]) if tipo == "Processos (PQI)" else None
+        st.subheader("🎯 Criar Novo Lembrete")
+        with st.form("form_novo_v2"):
+            tipo = st.selectbox("Vincular a:", ["Situações Diárias (Diário)", "Processos (PQI)"])
+            txt_lembrete = st.text_area("O que precisa ser feito?", placeholder="Descreva a tarefa...")
             
-            if st.form_submit_button("Gerar Lembrete 🚀", use_container_width=True):
-                data_f = f"{d_agendada.strftime('%d/%m/%Y')} {h_agendada.strftime('%H:%M')}"
-                if tipo == "Processos (PQI)":
-                    for p in projs:
-                        if p['titulo'] == proj_vinc:
-                            p.setdefault('lembretes', []).append({"id": datetime.now().timestamp(), "data_hora": data_f, "texto": txt_lembrete, "status": "Pendente"})
-                    db.salvar_projetos(projs)
+            c1, c2 = st.columns(2)
+            d_agendada = c1.date_input("Para quando?", min_value=hoje_dt)
+            h_agendada = c2.time_input("Qual horário?", value=datetime.now().time())
+            
+            proj_vinc = None
+            if tipo == "Processos (PQI)":
+                proj_vinc = st.selectbox("Selecione o Projeto PQI:", [p['titulo'] for p in projs])
+            
+            if st.form_submit_button("AGENDAR TAREFA 🚀", use_container_width=True):
+                if not txt_lembrete:
+                    st.error("Por favor, descreva a tarefa.")
                 else:
-                    diario.append({"usuario": user_info['nome'], "data_reg": datetime.now().strftime("%d/%m/%Y %H:%M"), "solicitacao": txt_lembrete, "depto": "GERAL", "lembrete": data_f, "status": "Pendente"})
-                    db.salvar_diario(diario)
-                st.success("Agendado!"); st.rerun()
+                    data_f = f"{d_agendada.strftime('%d/%m/%Y')} {h_agendada.strftime('%H:%M')}"
+                    if tipo == "Processos (PQI)":
+                        for p in projs:
+                            if p['titulo'] == proj_vinc:
+                                p.setdefault('lembretes', []).append({
+                                    "id": datetime.now().timestamp(), 
+                                    "data_hora": data_f, 
+                                    "texto": txt_lembrete, 
+                                    "status": "Pendente"
+                                })
+                        db.salvar_projetos(projs)
+                    else:
+                        diario.append({
+                            "usuario": user_info['nome'], 
+                            "data_reg": datetime.now().strftime("%d/%m/%Y %H:%M"), 
+                            "solicitacao": txt_lembrete, 
+                            "depto": "GERAL", 
+                            "lembrete": data_f, 
+                            "status": "Pendente"
+                        })
+                        db.salvar_diario(diario)
+                    
+                    st.success(f"Tarefa agendada para {data_f}!")
+                    st.rerun()
