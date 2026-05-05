@@ -161,21 +161,32 @@ def exibir(is_adm):
                     if st.button("🗑️ Excluir Projeto", key=f"p_del_{i}"):
                         st.session_state.db_pqi.pop(i); salvar_seguro_pqi(); st.rerun()
 
+        
         with tab_operacao_pqi:
-            filtrados = [p for p in st.session_state.db_pqi if p.get('status') == "Ativo"]
+            # Filtro robusto: considera "Ativo" como padrão se o campo não existir
+            filtrados = [p for p in st.session_state.db_pqi if p.get('status', 'Ativo') == "Ativo"]
+            
             if filtrados:
-                escolha = st.selectbox("Selecione:", [p['titulo'] for p in filtrados])
-                projeto = next(p for p in filtrados if p['titulo'] == escolha)
+                # Adicionamos uma key única para evitar conflitos de widget
+                escolha = st.selectbox("Selecione o Projeto:", [p['titulo'] for p in filtrados], key="sel_proj_operacao")
                 
-                # Regua de Roadmap
-                cols_r = st.columns(8)
-                for i, etapa in enumerate(ROADMAP):
-                    n, cl, txt = i+1, "ponto-regua", str(i+1)
-                    if n < projeto['fase']: cl += " ponto-check"; txt = "✔"
-                    elif n == projeto['fase']: cl += " ponto-atual"
-                    cols_r[i].markdown(f'<div class="{cl}">{txt}</div><div class="label-regua">{etapa["nome"]}</div>', unsafe_allow_html=True)
+                # Busca segura usando next com valor default None
+                projeto = next((p for p in filtrados if p['titulo'] == escolha), None)
                 
-                t_exec, t_dossie = st.tabs(["📝 Execução", "📁 Dossiê"])
+                if projeto:
+                    # Regua de Roadmap
+                    cols_r = st.columns(8)
+                    for i, etapa in enumerate(ROADMAP):
+                        n, cl, txt = i+1, "ponto-regua", str(i+1)
+                        if n < projeto['fase']: cl += " ponto-check"; txt = "✔"
+                        elif n == projeto['fase']: cl += " ponto-atual"
+                        cols_r[i].markdown(f'<div class="{cl}">{txt}</div><div class="label-regua">{etapa["nome"]}</div>', unsafe_allow_html=True)
+                    
+                    t_exec, t_dossie = st.tabs(["📝 Execução", "📁 Dossiê"])
+            
+            else:
+                st.info("Nenhum projeto ativo encontrado. Ative ou crie um na aba GESTÃO.")
+                
                 with t_exec:
                     c1, c2 = st.columns([2,1])
                     with c1:
