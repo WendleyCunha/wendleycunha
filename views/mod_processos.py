@@ -22,7 +22,7 @@ ROADMAP = [
 MOTIVOS_PADRAO = ["Reunião", "Pedido de Posicionamento", "Elaboração de Documentos", "Anotação Interna (Sem Dash)"]
 DEPARTAMENTOS = ["CX", "PQI","Compras", "Logística", "TI", "Financeiro", "RH", "Fiscal", "Operações", "Comercial", "Diretoria"]
 
-def exibir(user_role="ADM"):
+def exibir(user_role="OPERACIONAL"):
     # 1. ESTILO CSS
     st.markdown("""
     <style>
@@ -95,7 +95,14 @@ def exibir(user_role="ADM"):
                 c3.markdown(f'<div class="metric-card"><div class="metric-label">Gargalo (Depto)</div><div class="metric-value" style="font-size:18px">{gargalo}</div></div>', unsafe_allow_html=True)
                 
                 st.write("") 
-                df_at = pd.DataFrame([{"Projeto": p['titulo'], "Fase": f"Fase {p['fase']}", "Esforço": len(p.get('notas', []))} for p in ativos])
+                df_at = pd.DataFrame([
+                    {
+                        "Projeto": p.get('titulo', 'Sem Título'), 
+                        "Fase": f"Fase {p.get('fase', 1)}", 
+                        "Esforço": len(p.get('notas', []))
+                    } 
+                    for p in ativos
+                ])
                 
                 col_g1, col_g2 = st.columns(2)
                 with col_g1:
@@ -276,6 +283,119 @@ def exibir(user_role="ADM"):
                             with st.expander(f"📌 {n['motivo']} - {n['data']}"): 
                                 st.write(n['texto'])
 
+                        st.divider()
+                        st.markdown("#### 📋 Checklist de Atividades da Etapa")
+                        
+                        with st.popover("➕ Nova Atividade", use_container_width=True):
+                            c_chk1, c_chk2 = st.columns([2, 1])
+                            txt_tarefa = c_chk1.text_input("Atividade/Tarefa")
+                            resp_tarefa = c_chk2.selectbox("Responsável", ["Wendley Cunha", "Guilherme Egidio", "Tiago Costa", "Willian Diego", "Valdjane Maria", "Danilo Mesquita", "Ariadne Barreto", "Outro"])
+                            
+                            c_chk3, c_chk4 = st.columns(2)
+                            dt_tarefa = c_chk3.date_input("Prazo", key=f"dt_chk_{projeto['titulo']}")
+                            hr_tarefa = c_chk4.time_input("Hora", key=f"hr_chk_{projeto['titulo']}")
+                            
+                            if st.button("Agendar Atividade", type="primary", use_container_width=True):
+                                if txt_tarefa:
+                                    nova_atividade = {
+                                        "id": datetime.now().timestamp(),
+                                        "tarefa": txt_tarefa,
+                                        "responsavel": resp_tarefa,
+                                        "prazo": f"{dt_tarefa.strftime('%d/%m/%Y')} {hr_tarefa.strftime('%H:%M')}",
+                                        "status": "Pendente",
+                                        "fase_origem": projeto['fase']
+                                    }
+                                    # Inicializa a lista se não existir e adiciona
+                                    projeto.setdefault('checklist', []).append(nova_atividade)
+                                    
+                                    # Gera automaticamente um Lembrete no sistema que você já tem
+                                    projeto.setdefault('lembretes', []).append({
+                                        "id": datetime.now().timestamp(),
+                                        "data_hora": f"{dt_tarefa.strftime('%d/%m/%Y')} {hr_tarefa.strftime('%H:%M')}",
+                                        "texto": f"CHECKLIST [{resp_tarefa}]: {txt_tarefa}"
+                                    })
+                                    
+                                    salvar_seguro()
+                                    st.success("Atividade e Lembrete criados!")
+                                    st.rerun()
+                        
+                        # --- DENTRO DA EXIBIÇÃO DA LISTA ---# --- DENTRO DA EXIBIÇÃO DA LISTA ---
+                        atividades_fase = [a for a in projeto.get('checklist', []) if a.get('fase_origem') == projeto['fase']]
+                        
+                        if atividades_fase:
+                            for idx_a, ativ in enumerate(atividades_fase):
+                                with st.container(border=True):
+                                    col_a, col_b, col_c = st.columns([0.1, 0.5, 0.4])
+                                    
+                                    # 1. Lógica Unificada de Conclusão
+                                    is_concluido = ativ.get('status') == "Concluído"
+                                    
+                                    # ADICIONADO: idx_a na key para garantir que seja única
+                                    if col_a.checkbox("", key=f"chk_exec_{ativ['id']}_{idx_a}", value=is_concluido):
+                                        if not is_concluido: 
+                                            for item in projeto['checklist']:
+                                                if item['id'] == ativ['id']:
+                                                    item['status'] = "Concluído"
+                                            salvar_seguro()
+                                            st.rerun()
+                                    
+                                    # 2. Renderização de Texto
+                                    status_style = "~~" if is_concluido else ""
+                                    qtd_p = ativ.get('prorrogacoes', 0)
+                                    badge_p = f" ⚠️ *({qtd_p}x)*" if qtd_p > 0 else ""
+                                    
+                                    col_b.markdown(f"{status_style}**{ativ['tarefa']}** ({ativ['responsavel']}){status_style}{badge_p}")
+                                    col_c.caption(f"📅 Limite: {ativ['prazo']}")
+                                    
+                                    # 3. Botão Prorrogar (Só aparece se não estiver concluído)
+                                    if not is_concluido:
+                                        with col_c.popover("⏳ Prorrogar"):
+                                            # ADICIONADO: idx_a em todas as keys internas do popover
+                                            nova_dt = st.date_input("Nova Data", key=f"new_dt_{ativ['id']}_{idx_a}")
+                                            nova_hr = st.time_input("Nova Hora", key=f"new_hr_{ativ['id']}_{idx_a}")
+                                            motivo_p = st.text_input("Motivo (Opcional)", key=f"mot_p_{ativ['id']}_{idx_a}")
+                                            
+                                            if st.button("Confirmar Nova Data", key=f"btn_p_{ativ['id']}_{idx_a}", use_container_width=True):
+                                                for real_idx, item in enumerate(projeto['checklist']):
+                                                    if item['id'] == ativ['id']:
+                                                        prazo_antigo = item['prazo']
+                                                        item.setdefault('historico_prazos', []).append({
+                                                            "de": prazo_antigo,
+                                                            "motivo": motivo_p,
+                                                            "data_alteracao": datetime.now().strftime("%d/%m/%Y %H:%M")
+                                                        })
+                                                        item['prazo'] = f"{nova_dt.strftime('%d/%m/%Y')} {nova_hr.strftime('%H:%M')}"
+                                                        item['prorrogacoes'] = item.get('prorrogacoes', 0) + 1
+                                                        
+                                                        # Log no Dossiê (Excelente para Melhoria Contínua/Green Belt)
+                                                        projeto['notas'].append({
+                                                            "motivo": "Prorrogação de Prazo",
+                                                            "depto": "PQI",
+                                                            "texto": f"Atividade '{item['tarefa']}' adiada de {prazo_antigo} para {item['prazo']}. Motivo: {motivo_p}",
+                                                            "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                                            "fase_origem": projeto['fase']
+                                                        })
+                                                        
+                                                        salvar_seguro()
+                                                        st.success("Prazo prorrogado!")
+                                                        st.rerun()
+                                                        
+                                                        # Checkbox para concluir
+                                                        if col_a.checkbox("", key=f"chk_v_{ativ['id']}", value=(ativ['status'] == "Concluído")):
+                                                            # Localiza o índice real na lista original para atualizar
+                                                            for real_idx, item in enumerate(projeto['checklist']):
+                                                                if item['id'] == ativ['id']:
+                                                                    projeto['checklist'][real_idx]['status'] = "Concluído"
+                                                                    salvar_seguro()
+                                                                    st.rerun()
+                                
+                                # Texto da atividade
+                                status_style = "~~" if ativ['status'] == "Concluído" else ""
+                                col_b.markdown(f"{status_style}**{ativ['tarefa']}** ({ativ['responsavel']}){status_style}")
+                                col_c.caption(f"📅 {ativ['prazo']}")
+                        else:
+                            st.info("Nenhuma atividade cadastrada para esta fase.")
+
                     with col_e2:
                         st.markdown("#### ⚙️ Controle")
                         if st.button("▶️ AVANÇAR", use_container_width=True, type="primary") and projeto['fase'] < 8:
@@ -347,14 +467,15 @@ def exibir(user_role="ADM"):
                                     c_arq1.write(f"📄 {arq['nome']} ({arq['data']})")
                                     
                                     # Botão para recuperar do Firebase e baixar
-                                    if c_arq2.button("⬇️", key=f"dl_{p_nome}_{idx}"):
+                                    if c_arq2.button("📥 Preparar", key=f"prep_{p_nome}_{idx}"):
                                         conteudo = db.baixar_arquivo_firestore(arq['file_id'])
                                         if conteudo:
                                             st.download_button(
-                                                label="Confirmar",
+                                                label="Baixar Agora",
                                                 data=conteudo,
                                                 file_name=arq['nome'],
-                                                key=f"btn_confirm_{p_nome}_{idx}"
+                                                mime="application/octet-stream",
+                                                key=f"final_dl_{p_nome}_{idx}"
                                             )
                                         else:
                                             st.error("Arquivo não encontrado no banco.")
