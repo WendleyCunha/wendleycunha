@@ -26,29 +26,29 @@ def finalizar_atividade_atual(nome_usuario):
         db.salvar_esforco(logs)
 
 def exibir(user_info):
-# --- Estilos Aprimorados ---
-st.markdown("""
-    <style>
-    .reminder-card, .diary-card {
-        background: #ffffff; padding: 16px; border-radius: 12px;
-        margin-bottom: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-        border-left: 6px solid;
-    }
-    .reminder-card { border-left-color: #ef4444; }
-    .diary-card { border-left-color: #3b82f6; }
-    .status-tag { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title(f"Olá, {user_info['nome']}! 👋")
+    # --- Estilos Aprimorados ---
+    st.markdown("""
+        <style>
+        .reminder-card, .diary-card {
+            background: #ffffff; padding: 16px; border-radius: 12px;
+            margin-bottom: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            border-left: 6px solid;
+        }
+        .reminder-card { border-left-color: #ef4444; }
+        .diary-card { border-left-color: #3b82f6; }
+        .status-tag { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; }
+        </style>
+    """, unsafe_allow_html=True)
     
+    st.title(f"Olá, {user_info['nome']}! 👋")
+        
     # Carga de dados
     projs = db.carregar_projetos()
     diario = db.carregar_diario()
     atividades_log = db.carregar_esforco()
     motivos_gestao = db.carregar_motivos()
     hoje_dt = datetime.now().date()
-
+    
     tab_esforco, tab_pendentes, tab_agenda, tab_novo = st.tabs([
         "⚡ Esforço Hoje", "🚀 Pendências", "📅 Agenda", "➕ Novo"
     ])
