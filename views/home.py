@@ -61,6 +61,7 @@ def exibir(user_info):
         with c1:
             if atv_ativa:
                 st.info(f"🚀 **Ativo agora:**\n\n**{atv_ativa['motivo']}**")
+        
                 try:
                     inicio_dt = parse_dt_safe(atv_ativa.get('inicio'))
                     if inicio_dt:
@@ -68,7 +69,10 @@ def exibir(user_info):
                         st.caption(f"Iniciado às {inicio_dt.strftime('%H:%M')} ({decorrido} min decorridos)")
                     else:
                         st.caption("Iniciado agora")
-                
+        
+                except Exception as e:
+                    st.caption("Erro ao calcular tempo da atividade")
+        
                 if st.button("🏁 FINALIZAR TAREFA", type="secondary", use_container_width=True):
                     finalizar_atividade_atual(user_info['nome'])
                     st.rerun()
