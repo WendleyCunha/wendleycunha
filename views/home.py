@@ -26,21 +26,21 @@ def finalizar_atividade_atual(nome_usuario):
         db.salvar_esforco(logs)
 
 def exibir(user_info):
-    # --- Estilos Aprimorados ---
-    st.markdown("""
-        <style>
-        .reminder-card, .diary-card {
-            background: #ffffff; padding: 16px; border-radius: 12px;
-            margin-bottom: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-            border-left: 6px solid;
-        }
-        .reminder-card { border-left-color: #ef4444; }
-        .diary-card { border-left-color: #3b82f6; }
-        .status-tag { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; }
-        </style>
-    """, unsafe_allow_html=True)
+# --- Estilos Aprimorados ---
+st.markdown("""
+    <style>
+    .reminder-card, .diary-card {
+        background: #ffffff; padding: 16px; border-radius: 12px;
+        margin-bottom: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        border-left: 6px solid;
+    }
+    .reminder-card { border-left-color: #ef4444; }
+    .diary-card { border-left-color: #3b82f6; }
+    .status-tag { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; }
+    </style>
+""", unsafe_allow_html=True)
 
-    st.title(f"Olá, {user_info['nome']}! 👋")
+st.title(f"Olá, {user_info['nome']}! 👋")
     
     # Carga de dados
     projs = db.carregar_projetos()
