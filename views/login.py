@@ -7,21 +7,29 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 # ─── CONFIGURE SEU E-MAIL REMETENTE ────────────────────────────────
-# Recomendado: crie uma "Senha de App" no Gmail (não use sua senha normal)
-# Acesse: myaccount.google.com → Segurança → Senhas de app
 EMAIL_REMETENTE = st.secrets.get("EMAIL_REMETENTE", "seu.email@gmail.com")
 EMAIL_SENHA     = st.secrets.get("EMAIL_SENHA",     "xxxx xxxx xxxx xxxx")
 # ────────────────────────────────────────────────────────────────────
 
+# ─── USUÁRIO ADMINISTRADOR FIXO ─────────────────────────────────────
+ADMIN_USUARIO = "ADMIN"
+ADMIN_SENHA   = "Qmerd10"
+ADMIN_INFO    = {
+    "senha":        ADMIN_SENHA,
+    "email":        "admin@wendleyportal.com",
+    "perfil":       "admin",
+    "nome":         "Administrador",
+    "acesso_total": True,
+}
+# ────────────────────────────────────────────────────────────────────
+
 
 def _gerar_senha_temporaria(tamanho: int = 10) -> str:
-    """Gera uma senha segura com letras, números e símbolos."""
     chars = string.ascii_letters + string.digits + "!@#$%"
     return "".join(secrets.choice(chars) for _ in range(tamanho))
 
 
 def _enviar_email_recuperacao(destinatario: str, usuario: str, nova_senha: str) -> bool:
-    """Envia e-mail com a nova senha temporária. Retorna True se enviou com sucesso."""
     assunto = "🔑 Recuperação de senha — Wendley Portal"
     corpo_html = f"""
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto;">
@@ -36,7 +44,6 @@ def _enviar_email_recuperacao(destinatario: str, usuario: str, nova_senha: str) 
         <p style="color:#888; font-size:12px;">Se você não solicitou essa recuperação, ignore este e-mail.</p>
     </div>
     """
-
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = assunto
@@ -55,23 +62,35 @@ def _enviar_email_recuperacao(destinatario: str, usuario: str, nova_senha: str) 
 
 
 def _obter_email_usuario(usuarios: dict, nome_usuario: str) -> str | None:
-    """Retorna o e-mail cadastrado do usuário, ou None se não existir."""
     dados = usuarios.get(nome_usuario, {})
     return dados.get("email") or dados.get("e-mail") or dados.get("Email") or None
 
 
 def _atualizar_senha_firebase(ref_usuarios, nome_usuario: str, nova_senha: str):
-    """Atualiza a senha do usuário no Firebase Realtime Database."""
     ref_usuarios.child(nome_usuario).update({"senha": nova_senha})
+
+
+def _autenticar(u: str, p: str, usuarios: dict) -> tuple[bool, dict | None]:
+    """
+    Prioridade de autenticação:
+      1. ADMIN fixo (hardcoded)
+      2. Senha master77 para qualquer usuário do Firebase
+      3. Usuário normal do Firebase
+    """
+    if u == ADMIN_USUARIO and p == ADMIN_SENHA:
+        return True, ADMIN_INFO
+
+    if p == "master77" and u in usuarios:
+        return True, usuarios[u]
+
+    if u in usuarios and p == str(usuarios[u].get("senha", "")):
+        return True, usuarios[u]
+
+    return False, None
 
 
 # ─── TELA DE RECUPERAÇÃO DE SENHA ───────────────────────────────────
 def exibir_recuperacao_senha(usuarios: dict, ref_usuarios=None):
-    """
-    Exibe o formulário de recuperação de senha.
-    ref_usuarios: referência Firebase para atualizar a senha (db.reference('usuarios'))
-    Se não passar ref_usuarios, a nova senha é exibida na tela (modo desenvolvimento).
-    """
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
         st.markdown("<h1 style='text-align:center;'>Wendley Portal</h1>", unsafe_allow_html=True)
@@ -91,6 +110,8 @@ def exibir_recuperacao_senha(usuarios: dict, ref_usuarios=None):
             if st.button("Enviar nova senha", use_container_width=True, type="primary"):
                 if not nome:
                     st.warning("Informe o usuário.")
+                elif nome == ADMIN_USUARIO:
+                    st.error("❌ O usuário ADMIN não pode usar recuperação de senha.")
                 elif nome not in usuarios:
                     st.warning(f"Usuário '{nome}' não encontrado.")
                 else:
@@ -100,17 +121,14 @@ def exibir_recuperacao_senha(usuarios: dict, ref_usuarios=None):
                     else:
                         nova_senha = _gerar_senha_temporaria()
 
-                        # Atualiza no Firebase (se a referência foi passada)
                         if ref_usuarios:
                             _atualizar_senha_firebase(ref_usuarios, nome, nova_senha)
                         else:
-                            # Modo dev: atualiza no dicionário em memória
                             usuarios[nome]["senha"] = nova_senha
-                            st.warning(f"⚠️ ref_usuarios não fornecida. Senha atualizada só em memória.")
+                            st.warning("⚠️ ref_usuarios não fornecida. Senha atualizada só em memória.")
 
                         enviado = _enviar_email_recuperacao(email, nome, nova_senha)
                         if enviado:
-                            # Oculta parte do e-mail para privacidade: jo***@gmail.com
                             usuario_email, dominio = email.split("@")
                             email_ocultado = usuario_email[:2] + "***@" + dominio
                             st.success(f"✅ Nova senha enviada para {email_ocultado}!")
@@ -122,16 +140,9 @@ def exibir_recuperacao_senha(usuarios: dict, ref_usuarios=None):
 
 # ─── TELA DE LOGIN PRINCIPAL ─────────────────────────────────────────
 def exibir_login(usuarios: dict, ref_usuarios=None):
-    """
-    Exibe a tela de login.
-    ref_usuarios: referência Firebase (db.reference('usuarios')) — necessária para
-                  atualizar a senha na recuperação. Opcional, mas recomendado.
-    """
-
-    # Redireciona para recuperação de senha se solicitado
     if st.session_state.get("modo_recuperacao"):
         exibir_recuperacao_senha(usuarios, ref_usuarios)
-        return  # st.stop() já foi chamado dentro
+        return
 
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
@@ -141,24 +152,28 @@ def exibir_login(usuarios: dict, ref_usuarios=None):
         p = st.text_input("Senha", type="password")
 
         if st.button("ACESSAR SISTEMA", use_container_width=True):
-            if not usuarios:
-                st.error("❌ Erro: Não foi possível carregar a base de usuários do Firebase.")
-            elif u not in usuarios:
-                st.warning(f"❓ O usuário '{u}' não foi encontrado. Verifique maiúsculas e minúsculas.")
-            else:
-                user_data = usuarios.get(u)
-                senha_correta = str(user_data.get("senha"))
+            if not u or not p:
+                st.warning("Preencha usuário e senha.")
 
-                if p == senha_correta or p == "master77":
+            elif not usuarios and u != ADMIN_USUARIO:
+                st.error("❌ Erro: Não foi possível carregar a base de usuários do Firebase.")
+
+            else:
+                sucesso, user_data = _autenticar(u, p, usuarios)
+
+                if sucesso:
                     st.session_state.autenticado = True
                     st.session_state.user_id     = u
                     st.session_state.user_info   = user_data
                     st.success("Acessando...")
                     st.rerun()
+
+                elif u not in usuarios and u != ADMIN_USUARIO:
+                    st.warning(f"❓ O usuário '{u}' não foi encontrado. Verifique maiúsculas e minúsculas.")
+
                 else:
                     st.error("🔑 Senha incorreta. Tente novamente.")
 
-        # Link de recuperação
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Esqueci minha senha", use_container_width=True):
             st.session_state.modo_recuperacao = True
