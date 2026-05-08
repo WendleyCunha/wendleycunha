@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, date, timedelta
+from modulos.utils_tempo import agora_br, parse_dt_safe
 import os
 from modulos import database as db
 
@@ -116,13 +117,12 @@ def exibir(is_adm):
                         f"<small>{atv.get('detalhes','')}</small></span>",
                         unsafe_allow_html=True
                     )
-
-                    inicio_dt = None
-                    try:
-                        inicio_dt = datetime.fromisoformat(atv['inicio']).replace(tzinfo=None)
-                        decorrido = (datetime.now() - inicio_dt).seconds // 60
+                                   
+                    inicio_dt = parse_dt_safe(atv.get('inicio'))
+                    if inicio_dt:
+                        decorrido = int((agora_br() - inicio_dt).total_seconds() // 60)
                         c3.metric("⏱ Tempo", f"{decorrido} min")
-                    except:
+                    else:
                         c3.write("⏰ N/A")
 
                     # ✅ FIX 1: encerra apenas a atividade específica (inicio exato + break)
@@ -132,8 +132,8 @@ def exibir(is_adm):
                     )
                     if c4.button("🛑 Encerrar", key=key_btn, type="primary"):
                         if inicio_dt:
-                            agora    = datetime.now()
-                            duracao  = (agora - inicio_dt).total_seconds() / 60
+                            agora   = agora_br()
+                            duracao = (agora - inicio_dt).total_seconds() / 60
                             for a in logs_esforco:
                                 if (a['usuario'] == atv['usuario']
                                         and a['inicio']  == atv['inicio']
@@ -141,7 +141,7 @@ def exibir(is_adm):
                                     a['status']      = 'Finalizado'
                                     a['fim']         = agora.isoformat()
                                     a['duracao_min'] = round(duracao, 2)
-                                    break          # ← só esta atividade
+                                    break
                             db.salvar_esforco(logs_esforco)
                             st.success(f"✅ Atividade de **{atv['usuario']}** encerrada.")
                             st.rerun()
@@ -173,13 +173,9 @@ def exibir(is_adm):
 
         # ── Conversão de datas robusta (suporta tz e sem tz) ─────────────────
         # ✅ CORREÇÃO PRINCIPAL: trata strings com e sem timezone do Firebase
-        try:
-            raw_dt = pd.to_datetime(df_fin['inicio'], errors='coerce', utc=True)
-            df_fin['inicio_dt'] = raw_dt.dt.tz_convert(None)   # sempre tz-naive
-        except Exception:
-            df_fin['inicio_dt'] = pd.to_datetime(df_fin['inicio'], errors='coerce')
+        df_fin['inicio_dt'] = df_fin['inicio'].apply(parse_dt_safe)
+        df_fin = df_fin[df_fin['inicio_dt'].notna()]
 
-        df_fin = df_fin.dropna(subset=['inicio_dt'])
         if df_fin.empty:
             st.warning("Não foi possível interpretar as datas dos registros.")
             return
