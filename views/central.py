@@ -359,10 +359,61 @@ def exibir(is_adm):
         st.divider()
         for uid, info in usuarios_dict.items():
             with st.container(border=True):
-                c1, c2 = st.columns([5, 1])
+                c1, c2, c3 = st.columns([5, 1, 1])
                 c1.write(f"**{info['nome']}** ({uid}) — {info.get('role','?')} | {info.get('depto','S/D')}")
-                if c2.button("🗑️", key=f"del_u_{uid}"):
+                
+                editar_key = f"editar_{uid}"
+                if editar_key not in st.session_state:
+                    st.session_state[editar_key] = False
+        
+                if c2.button("✏️", key=f"btn_edit_{uid}", help="Editar usuário"):
+                    st.session_state[editar_key] = not st.session_state[editar_key]
+        
+                if c3.button("🗑️", key=f"del_u_{uid}"):
                     st.info("Exclusão lógica: desative o usuário diretamente no banco.")
+        
+                if st.session_state[editar_key]:
+                    with st.form(key=f"form_edit_{uid}"):
+                        st.markdown(f"**Editando: {info['nome']}**")
+                        e1, e2 = st.columns(2)
+                        novo_login = e1.text_input("Login (ID)", value=uid)
+                        novo_nome  = e2.text_input("Nome Completo", value=info.get('nome', ''))
+                        
+                        e3, e4 = st.columns(2)
+                        novo_role  = e3.selectbox(
+                            "Tipo de Usuário",
+                            ["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"],
+                            index=["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"].index(info.get('role', 'OPERACIONAL'))
+                                  if info.get('role') in ["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"] else 1
+                        )
+                        novo_depto = e4.selectbox(
+                            "Departamento",
+                            departamentos,
+                            index=departamentos.index(info.get('depto')) if info.get('depto') in departamentos else 0
+                        )
+                        nova_senha = st.text_input("Nova Senha (deixe em branco para não alterar)", type="password")
+        
+                        if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
+                            dados_atualizados = {
+                                "nome":    novo_nome,
+                                "role":    novo_role,
+                                "depto":   novo_depto,
+                                "modulos": info.get('modulos', []),
+                                "ativo":   info.get('ativo', True)
+                            }
+                            if nova_senha.strip():
+                                dados_atualizados["senha"] = nova_senha.strip()
+                            
+                            # Se mudou o login (uid), recria o documento com novo ID
+                            if novo_login.strip() != uid:
+                                db.salvar_usuario(novo_login.strip(), dados_atualizados)
+                                db.deletar_usuario(uid)   # ← precisa existir no seu db.py
+                            else:
+                                db.salvar_usuario(uid, dados_atualizados)
+                            
+                            st.session_state[editar_key] = False
+                            st.success(f"✅ Usuário **{novo_nome}** atualizado!")
+                            st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
     # DEPARTAMENTOS
