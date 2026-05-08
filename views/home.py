@@ -49,8 +49,12 @@ def exibir(user_info):
     motivos_gestao = db.carregar_motivos()
     hoje_dt = datetime.now().date()
     
-    tab_esforco, tab_pendentes, tab_agenda, tab_novo = st.tabs([
-        "⚡ Esforço Hoje", "🚀 Pendências", "📅 Agenda", "➕ Novo"
+    tab_esforco, tab_pendentes, tab_agenda, tab_novo, tab_perfil = st.tabs([
+        "⚡ Esforço Hoje",
+        "🚀 Pendências",
+        "📅 Agenda",
+        "➕ Novo",
+        "👤 Perfil"
     ])
 
     # --- ABA 1: ESFORÇO ---
@@ -257,3 +261,29 @@ def exibir(user_info):
                     
                     st.success(f"Tarefa agendada para {data_f}!")
                     st.rerun()
+
+
+    # --- ABA 5: PERFIL ---
+    with tab_perfil:
+
+        st.subheader("👤 Meu Perfil")
+
+        foto = st.file_uploader(
+            "Escolha uma foto",
+            type=["png", "jpg", "jpeg"]
+        )
+
+        if foto is not None:
+
+            caminho = f"fotos/{user_info['nome']}.png"
+
+            with open(caminho, "wb") as f:
+                f.write(foto.getbuffer())
+
+            st.success("Foto salva com sucesso!")
+
+        # Mostrar foto atual
+        try:
+            st.image(f"fotos/{user_info['nome']}.png", width=150)
+        except:
+            st.info("Você ainda não possui foto.")
