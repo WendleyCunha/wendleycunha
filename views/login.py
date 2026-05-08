@@ -11,10 +11,8 @@ def exibir_login(usuarios):
         if st.button("ACESSAR SISTEMA", use_container_width=True):
             if not usuarios:
                 st.error("❌ Erro: Não foi possível carregar a base de usuários do Firebase.")
-            
             elif u not in usuarios:
                 st.warning(f"❓ O usuário '{u}' não foi encontrado. Verifique maiúsculas e minúsculas.")
-            
             else:
                 user_data = usuarios.get(u)
                 senha_correta = str(user_data.get("senha"))
@@ -28,4 +26,4 @@ def exibir_login(usuarios):
                 else:
                     st.error("🔑 Senha incorreta. Tente novamente.")
 
-    st.stop(
+    st.stop()
