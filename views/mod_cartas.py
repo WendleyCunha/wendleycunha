@@ -177,9 +177,13 @@ def exibir(user_role):
                             <div class="card-carta">
                                 <div class="label-card">COLABORADOR</div>
                                 <div class="info-card">{c['NOME']}</div>
+                                <div class="label-card">CÓD. CLIENTE</div>
+                                <div class="info-card">{c.get('COD_CLI', '—')}</div>
                                 <div class="label-card">VALOR</div>
                                 <div style="font-size: 1.2rem; font-weight: bold; color: #D4AF37;">R$ {c['VALOR']:,.2f}</div>
                                 <div class="label-card">DATA: {c['DATA']}</div>
+                                <div class="label-card" style="margin-top:8px;">MOTIVO</div>
+                                <div style="font-size:0.85rem; color:#495057; margin-top:2px;">{c.get('MOTIVO', '—')}</div>
                             </div>
                         """, unsafe_allow_html=True)
                         
