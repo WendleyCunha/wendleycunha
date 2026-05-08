@@ -91,7 +91,7 @@ def exibir(is_adm):
     logs_esforco  = db.carregar_esforco()
 
     # ── MENU ───────────────────────────────────────────────────────────────────
-    st.title("⚙️ Central de Comando")
+    st.title("⚙️ Config.")
 
     # ✅ FIX 2: PROJETOS PQI removido
     menu = st.segmented_control(
