@@ -11,17 +11,18 @@ EMAIL_REMETENTE = st.secrets.get("EMAIL_REMETENTE", "seu.email@gmail.com")
 EMAIL_SENHA     = st.secrets.get("EMAIL_SENHA",     "xxxx xxxx xxxx xxxx")
 # ────────────────────────────────────────────────────────────────────
 
-# ─── USUÁRIO ADMINISTRADOR FIXO ─────────────────────────────────────
+# --- USUÁRIO ADMINISTRADOR FIXO -------------------------------------
 ADMIN_USUARIO = "ADMIN"
 ADMIN_SENHA   = "Qmerd10"
 ADMIN_INFO    = {
     "senha":        ADMIN_SENHA,
     "email":        "admin@wendleyportal.com",
-    "perfil":       "admin",
+    "role":         "ADM",           # Alterado de 'perfil' para 'role' para bater com o main.py
     "nome":         "Administrador",
+    "modulos":      [],              # Como o role é ADM, o main liberará tudo automaticamente
     "acesso_total": True,
 }
-# ────────────────────────────────────────────────────────────────────
+# --------------------------------------------------------------------
 
 
 def _gerar_senha_temporaria(tamanho: int = 10) -> str:
