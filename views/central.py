@@ -337,7 +337,9 @@ def exibir(is_adm):
                 u_nome  = st.text_input("Nome Completo")
                 u_cargo = st.selectbox("Cargo", ["ADM", "OPERACIONAL", "GERÊNCIA"])
                 u_depto = st.selectbox("Departamento", departamentos)
-
+                u_email  = st.text_input("E-mail", placeholder="usuario@empresa.com")
+                u_funcao = st.text_input("Função", placeholder="Analista, Supervisor...")
+                
                 # Módulos na criação (somente se não for ADM — mas permite selecionar)
                 modulos_criacao = []
                 if mapa_modulos:
@@ -353,6 +355,8 @@ def exibir(is_adm):
                         "nome":    u_nome,
                         "role":    u_cargo,
                         "depto":   u_depto,
+                        "email":   u_email.strip().lower(),
+                        "funcao":  u_funcao.strip(),
                         "modulos": ids_modulos_criacao,
                         "ativo":   True
                     })
@@ -399,7 +403,10 @@ def exibir(is_adm):
                             departamentos,
                             index=departamentos.index(info.get('depto')) if info.get('depto') in departamentos else 0
                         )
-
+                        e5, e6 = st.columns(2)
+                        novo_email  = e5.text_input("E-mail", value=info.get('email', ''))
+                        nova_funcao = e6.text_input("Função", value=info.get('funcao', ''))
+                        
                         # ── MÓDULOS ───────────────────────────────────────────
                         # Calcula quais labels já estão ativos para este usuário
                         modulos_atuais = info.get('modulos', [])
@@ -436,6 +443,8 @@ def exibir(is_adm):
                                 "nome":    novo_nome,
                                 "role":    novo_role,
                                 "depto":   novo_depto,
+                                "email":   novo_email.strip().lower(),
+                                "funcao":  nova_funcao.strip(),
                                 "modulos": ids_modulos,
                                 "ativo":   info.get('ativo', True)
                             }
