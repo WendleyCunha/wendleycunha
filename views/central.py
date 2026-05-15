@@ -367,6 +367,9 @@ def exibir(is_adm):
 
         # ── Lista de Usuários ─────────────────────────────────────────────────
         for uid, info in usuarios_dict.items():
+
+            if not info.get("ativo", True):
+                continue
             with st.container(border=True):
                 c1, c2, c3 = st.columns([5, 1, 1])
                 c1.write(f"**{info['nome']}** ({uid}) — {info.get('role','?')} | {info.get('depto','S/D')}")
@@ -379,7 +382,14 @@ def exibir(is_adm):
                     st.session_state[editar_key] = not st.session_state[editar_key]
 
                 if c3.button("🗑️", key=f"del_u_{uid}"):
-                    st.info("Exclusão lógica: desative o usuário diretamente no banco.")
+
+                    dados_atualizados = info.copy()
+                    dados_atualizados["ativo"] = False
+                
+                    db.salvar_usuario(uid, dados_atualizados)
+                
+                    st.success(f"✅ Usuário '{info['nome']}' desativado com sucesso.")
+                    st.rerun()
 
                 if st.session_state[editar_key]:
                     with st.form(key=f"form_edit_{uid}"):
