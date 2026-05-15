@@ -5,6 +5,7 @@ from datetime import datetime, date, timedelta
 from modulos.utils_tempo import agora_br, parse_dt_safe
 import os
 from modulos import database as db
+import configuracao as config  # ← necessário para MAPA_MODULOS_MESTRE
 
 # --- CONFIGURAÇÕES GERAIS ---
 UPLOAD_DIR = "anexos_pqi"
@@ -34,7 +35,7 @@ def _parse_datas(df: pd.DataFrame) -> pd.DataFrame:
     """
     raw = pd.to_datetime(df['inicio'], errors='coerce', utc=True)
     df['inicio_dt'] = raw.dt.tz_localize(None) if raw.dt.tz is None else raw.dt.tz_convert(None)
-    df['data_ref']  = df['inicio_dt'].dt.normalize()          # meia-noite, para comparação fácil
+    df['data_ref']  = df['inicio_dt'].dt.normalize()
     df['duracao_min'] = pd.to_numeric(df.get('duracao_min', 0), errors='coerce').fillna(0)
     return df
 
@@ -47,7 +48,6 @@ def exibir(is_adm):
     # ── ESTILO GLOBAL ──────────────────────────────────────────────────────────
     st.markdown("""
     <style>
-        /* Cards de métricas */
         .kpi-card {
             background: linear-gradient(135deg,#f8faff 0%,#eef2ff 100%);
             border: 1px solid #c7d2fe;
@@ -61,7 +61,6 @@ def exibir(is_adm):
                      text-transform: uppercase; letter-spacing: .06em; }
         .kpi-sub   { font-size: 12px; color: #64748b; margin-top: 2px; }
 
-        /* Filtros highlight */
         .filter-bar {
             background: #f1f5f9;
             border-radius: 12px;
@@ -70,7 +69,6 @@ def exibir(is_adm):
             border: 1px solid #e2e8f0;
         }
 
-        /* Motivos list */
         .motivo-row {
             display:flex; align-items:center; justify-content:space-between;
             padding: 8px 12px; border-radius: 8px; margin: 4px 0;
@@ -78,7 +76,6 @@ def exibir(is_adm):
         }
         .motivo-nome { font-weight:600; color:#1e293b; font-size:14px; }
 
-        /* Monitor card */
         .monitor-user { font-size:15px; font-weight:700; color:#002366; }
         .monitor-motivo { font-size:13px; color:#475569; }
     </style>
@@ -90,10 +87,12 @@ def exibir(is_adm):
     motivos       = db.carregar_motivos()
     logs_esforco  = db.carregar_esforco()
 
+    # ── Mapa de módulos do config (label → id_modulo) ──────────────────────────
+    mapa_modulos = getattr(config, 'MAPA_MODULOS_MESTRE', {})
+
     # ── MENU ───────────────────────────────────────────────────────────────────
     st.title("⚙️ Central de Comando")
 
-    # ✅ FIX 2: PROJETOS PQI removido
     menu = st.segmented_control(
         "Gerenciamento:",
         ["🔴 MONITOR", "📊 DASHBOARD", "👥 USUÁRIOS", "🏢 DEPTOS", "⚙️ MOTIVOS"],
@@ -117,7 +116,7 @@ def exibir(is_adm):
                         f"<small>{atv.get('detalhes','')}</small></span>",
                         unsafe_allow_html=True
                     )
-                                   
+
                     inicio_dt = parse_dt_safe(atv.get('inicio'))
                     if inicio_dt:
                         decorrido = int((agora_br() - inicio_dt).total_seconds() // 60)
@@ -125,7 +124,6 @@ def exibir(is_adm):
                     else:
                         c3.write("⏰ N/A")
 
-                    # ✅ FIX 1: encerra apenas a atividade específica (inicio exato + break)
                     key_btn = (
                         f"stop_{atv['usuario']}_{atv['inicio']}"
                         .replace(":", "").replace(".", "").replace("-", "").replace("+", "")
@@ -156,7 +154,6 @@ def exibir(is_adm):
     elif menu == "📊 DASHBOARD":
         st.subheader("📊 BI — Esforço Operacional")
 
-        # ── Validação básica ──────────────────────────────────────────────────
         if not logs_esforco:
             st.info("Nenhum registro de esforço encontrado.")
             return
@@ -171,8 +168,6 @@ def exibir(is_adm):
             st.info("Nenhuma atividade finalizada ainda.")
             return
 
-        # ── Conversão de datas robusta (suporta tz e sem tz) ─────────────────
-        # ✅ CORREÇÃO PRINCIPAL: trata strings com e sem timezone do Firebase
         df_fin['inicio_dt'] = df_fin['inicio'].apply(parse_dt_safe)
         df_fin = df_fin[df_fin['inicio_dt'].notna()]
 
@@ -183,9 +178,8 @@ def exibir(is_adm):
         df_fin['data_ref']    = df_fin['inicio_dt'].dt.normalize()
         df_fin['duracao_min'] = pd.to_numeric(df_fin.get('duracao_min', 0), errors='coerce').fillna(0)
 
-        hoje       = pd.Timestamp(date.today())
-        data_min   = df_fin['data_ref'].min().date()
-        data_max   = df_fin['data_ref'].max().date()
+        data_min = df_fin['data_ref'].min().date()
+        data_max = df_fin['data_ref'].max().date()
 
         # ── FILTROS ───────────────────────────────────────────────────────────
         st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
@@ -193,7 +187,6 @@ def exibir(is_adm):
 
         col_p, col_u, col_m = st.columns(3)
 
-        # Filtro de período
         periodo = col_p.selectbox(
             "📅 Período",
             ["Hoje", "Últimos 7 dias", "Este mês", "Personalizado"],
@@ -206,7 +199,6 @@ def exibir(is_adm):
         user_f   = col_u.selectbox("👤 Operador", lista_usuarios, key="dash_user")
         motivo_f = col_m.selectbox("📌 Motivo",   lista_motivos,  key="dash_motivo")
 
-        # Datas conforme período escolhido
         if periodo == "Hoje":
             de  = date.today()
             ate = date.today()
@@ -216,14 +208,13 @@ def exibir(is_adm):
         elif periodo == "Este mês":
             de  = date.today().replace(day=1)
             ate = date.today()
-        else:  # Personalizado
+        else:
             col_de, col_ate = st.columns(2)
             de  = col_de.date_input("De",  value=data_min, min_value=data_min, max_value=data_max, key="dash_de")
             ate = col_ate.date_input("Até", value=data_max, min_value=data_min, max_value=data_max, key="dash_ate")
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # ── Aplica filtros ────────────────────────────────────────────────────
         ts_de  = pd.Timestamp(de)
         ts_ate = pd.Timestamp(ate) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
 
@@ -239,9 +230,9 @@ def exibir(is_adm):
             return
 
         # ── KPIs ─────────────────────────────────────────────────────────────
-        total_ativ  = len(df_view)
-        total_tempo = df_view['duracao_min'].sum()
-        media_tempo = df_view['duracao_min'].mean()
+        total_ativ   = len(df_view)
+        total_tempo  = df_view['duracao_min'].sum()
+        media_tempo  = df_view['duracao_min'].mean()
         n_operadores = df_view['usuario'].nunique()
 
         k1, k2, k3, k4 = st.columns(4)
@@ -338,75 +329,126 @@ def exibir(is_adm):
     # ══════════════════════════════════════════════════════════════════════════
     elif menu == "👥 USUÁRIOS":
         st.subheader("Gestão de Colaboradores")
+
+        # ── Novo Colaborador ──────────────────────────────────────────────────
         with st.expander("➕ Novo Colaborador"):
             with st.form("f_user"):
                 u_id    = st.text_input("ID Login")
                 u_nome  = st.text_input("Nome Completo")
                 u_cargo = st.selectbox("Cargo", ["ADM", "OPERACIONAL", "GERÊNCIA"])
                 u_depto = st.selectbox("Departamento", departamentos)
+
+                # Módulos na criação (somente se não for ADM — mas permite selecionar)
+                modulos_criacao = []
+                if mapa_modulos:
+                    modulos_criacao = st.multiselect(
+                        "🔐 Módulos com Acesso",
+                        options=list(mapa_modulos.keys()),
+                        help="ADMs têm acesso total automaticamente; para outros roles, selecione os módulos permitidos."
+                    )
+
                 if st.form_submit_button("💾 Salvar"):
+                    ids_modulos_criacao = [mapa_modulos[lbl] for lbl in modulos_criacao if lbl in mapa_modulos]
                     db.salvar_usuario(u_id, {
-                        "nome": u_nome, "role": u_cargo,
-                        "depto": u_depto, "modulos": [], "ativo": True
+                        "nome":    u_nome,
+                        "role":    u_cargo,
+                        "depto":   u_depto,
+                        "modulos": ids_modulos_criacao,
+                        "ativo":   True
                     })
                     st.success("Colaborador criado!")
                     st.rerun()
 
         st.divider()
+
+        # ── Lista de Usuários ─────────────────────────────────────────────────
         for uid, info in usuarios_dict.items():
             with st.container(border=True):
                 c1, c2, c3 = st.columns([5, 1, 1])
                 c1.write(f"**{info['nome']}** ({uid}) — {info.get('role','?')} | {info.get('depto','S/D')}")
-                
+
                 editar_key = f"editar_{uid}"
                 if editar_key not in st.session_state:
                     st.session_state[editar_key] = False
-        
+
                 if c2.button("✏️", key=f"btn_edit_{uid}", help="Editar usuário"):
                     st.session_state[editar_key] = not st.session_state[editar_key]
-        
+
                 if c3.button("🗑️", key=f"del_u_{uid}"):
                     st.info("Exclusão lógica: desative o usuário diretamente no banco.")
-        
+
                 if st.session_state[editar_key]:
                     with st.form(key=f"form_edit_{uid}"):
                         st.markdown(f"**Editando: {info['nome']}**")
+
                         e1, e2 = st.columns(2)
                         novo_login = e1.text_input("Login (ID)", value=uid)
                         novo_nome  = e2.text_input("Nome Completo", value=info.get('nome', ''))
-                        
+
                         e3, e4 = st.columns(2)
-                        novo_role  = e3.selectbox(
+                        novo_role = e3.selectbox(
                             "Tipo de Usuário",
                             ["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"],
-                            index=["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"].index(info.get('role', 'OPERACIONAL'))
-                                  if info.get('role') in ["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"] else 1
+                            index=(
+                                ["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"].index(info.get('role', 'OPERACIONAL'))
+                                if info.get('role') in ["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"] else 1
+                            )
                         )
                         novo_depto = e4.selectbox(
                             "Departamento",
                             departamentos,
                             index=departamentos.index(info.get('depto')) if info.get('depto') in departamentos else 0
                         )
-                        nova_senha = st.text_input("Nova Senha (deixe em branco para não alterar)", type="password")
-        
+
+                        # ── MÓDULOS ───────────────────────────────────────────
+                        # Calcula quais labels já estão ativos para este usuário
+                        modulos_atuais = info.get('modulos', [])
+                        default_labels = [
+                            lbl for lbl, id_mod in mapa_modulos.items()
+                            if id_mod in modulos_atuais
+                        ]
+
+                        if novo_role == "ADM":
+                            st.info("ℹ️ Usuários ADM têm acesso total a todos os módulos automaticamente.")
+                            novos_modulos_labels = list(mapa_modulos.keys())  # salva tudo, mas não importa para ADM
+                        else:
+                            novos_modulos_labels = st.multiselect(
+                                "🔐 Módulos com Acesso",
+                                options=list(mapa_modulos.keys()),
+                                default=default_labels,
+                                help="Selecione quais módulos este usuário poderá acessar no menu."
+                            )
+
+                        nova_senha = st.text_input(
+                            "Nova Senha (deixe em branco para não alterar)",
+                            type="password"
+                        )
+
                         if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
+                            # Converte labels selecionados → IDs de módulo
+                            ids_modulos = [
+                                mapa_modulos[lbl]
+                                for lbl in novos_modulos_labels
+                                if lbl in mapa_modulos
+                            ]
+
                             dados_atualizados = {
                                 "nome":    novo_nome,
                                 "role":    novo_role,
                                 "depto":   novo_depto,
-                                "modulos": info.get('modulos', []),
+                                "modulos": ids_modulos,
                                 "ativo":   info.get('ativo', True)
                             }
                             if nova_senha.strip():
                                 dados_atualizados["senha"] = nova_senha.strip()
-                            
+
                             # Se mudou o login (uid), recria o documento com novo ID
                             if novo_login.strip() != uid:
                                 db.salvar_usuario(novo_login.strip(), dados_atualizados)
-                                db.deletar_usuario(uid)   # ← precisa existir no seu db.py
+                                db.deletar_usuario(uid)
                             else:
                                 db.salvar_usuario(uid, dados_atualizados)
-                            
+
                             st.session_state[editar_key] = False
                             st.success(f"✅ Usuário **{novo_nome}** atualizado!")
                             st.rerun()
@@ -447,7 +489,6 @@ def exibir(is_adm):
         st.markdown("#### 📋 Motivos Cadastrados")
 
         if motivos:
-            # ✅ FIX 4: deletar motivo individualmente
             for idx, motivo in enumerate(sorted(motivos)):
                 col_m1, col_m2 = st.columns([5, 1])
                 col_m1.markdown(f"▸ **{motivo}**")
