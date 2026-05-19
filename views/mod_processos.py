@@ -283,7 +283,7 @@ def exibir(user_role="OPERACIONAL"):
                         with st.popover("➕ Nova Atividade", use_container_width=True):
                             c_chk1, c_chk2 = st.columns([2, 1])
                             txt_tarefa = c_chk1.text_input("Atividade/Tarefa")
-                            resp_tarefa = c_chk2.selectbox("Responsável", ["Wendley Cunha", "Guilherme Egidio", "Tiago Costa", "Willian Diego", "Valdjane Maria", "Danilo Mesquita", "Ariadne Barreto", "Outro"])
+                            resp_tarefa = c_chk2.selectbox("Responsável", ["Wendley Cunha", "Guilherme Egidio", "Tiago Costa", "Willian Diego", "Valdjane Maria", "Danilo Mesquita", "Ariadne Barreto", "Allan Barros", "Outro"])
 
                             c_chk3, c_chk4 = st.columns(2)
                             dt_tarefa = c_chk3.date_input("Prazo", key=f"dt_chk_{projeto['titulo']}")
