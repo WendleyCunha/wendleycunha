@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import plotly.express as px
-from modulos import database as db  # ✅ FIX 1: import corrigido
+from modulos import database as db
 
 # --- CONFIGURAÇÕES DO ROADMAP ---
 ROADMAP = [
@@ -63,7 +63,9 @@ def exibir(user_role="OPERACIONAL"):
         tab_gestao = None
         tab_operacao = tabs[1]
 
+    # =========================================================
     # --- 1. DASHBOARD GERAL ---
+    # =========================================================
     with tab_dash:
         sub_d1, sub_d2 = st.tabs(["📈 Portfólio Ativo", "✅ Projetos Entregues"])
         projs = st.session_state.db_pqi
@@ -109,12 +111,22 @@ def exibir(user_role="OPERACIONAL"):
         with sub_d2:
             concluidos = [p for p in projs if p.get('status') == "Concluído"]
             if concluidos:
-                df_concl = pd.DataFrame([{"Projeto": p['titulo'], "Data": p.get('data_conclusao', 'S/D'), "Ações": len(p.get('notas', []))} for p in concluidos])
+                df_concl = pd.DataFrame([
+                    {
+                        "Projeto": p['titulo'],
+                        # FIX 1: campo data_conclusao agora é corretamente exibido
+                        "Data Conclusão": p.get('data_conclusao', 'S/D'),
+                        "Ações": len(p.get('notas', []))
+                    }
+                    for p in concluidos
+                ])
                 st.dataframe(df_concl, use_container_width=True, hide_index=True)
             else:
                 st.info("Nenhum projeto entregue.")
 
+    # =========================================================
     # --- 2. GESTÃO ---
+    # =========================================================
     if tab_gestao:
         with tab_gestao:
             sub_g1, sub_g2 = st.tabs(["⚙️ Gerenciamento de Projetos", "📝 Situações Diárias"])
@@ -124,31 +136,63 @@ def exibir(user_role="OPERACIONAL"):
                     novo_projeto = {
                         "titulo": f"Novo Projeto {len(st.session_state.db_pqi) + 1}",
                         "fase": 1, "status": "Ativo", "notas": [], "lembretes": [],
-                        "pastas_virtuais": {}, "motivos_custom": []
+                        "pastas_virtuais": {}, "motivos_custom": [], "checklist": [],
+                        "data_criacao": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "data_conclusao": None
                     }
                     st.session_state.db_pqi.append(novo_projeto)
                     salvar_seguro()
                     st.rerun()
 
                 st.write("---")
-                for i, p in enumerate(st.session_state.db_pqi):
-                    with st.expander(f"Configurações: {p['titulo']}"):
+                for i, proj_gest in enumerate(st.session_state.db_pqi):
+                    with st.expander(f"Configurações: {proj_gest['titulo']}"):
                         col_cfg1, col_cfg2 = st.columns([2, 1])
-                        p['titulo'] = col_cfg1.text_input("Nome do Projeto", p['titulo'], key=f"gest_t_{i}")
+                        novo_titulo = col_cfg1.text_input(
+                            "Nome do Projeto",
+                            proj_gest['titulo'],
+                            key=f"gest_t_{i}"
+                        )
                         stts_options = ["Ativo", "Concluído", "Pausado"]
-                        p['status'] = col_cfg2.selectbox("Status", stts_options, index=stts_options.index(p.get('status', 'Ativo')), key=f"gest_s_{i}")
+                        novo_status = col_cfg2.selectbox(
+                            "Status",
+                            stts_options,
+                            index=stts_options.index(proj_gest.get('status', 'Ativo')),
+                            key=f"gest_s_{i}"
+                        )
 
+                        # FIX 2: motivos_custom pré-populados com valores atuais
+                        motivos_atuais = ", ".join(proj_gest.get('motivos_custom', []))
                         st.write("**Motivos Customizados**")
-                        novos_mots = st.text_input("Adicionar motivos (separados por vírgula)", key=f"mot_cust_{i}")
-                        if st.button("Atualizar Motivos", key=f"btn_mot_{i}"):
-                            p['motivos_custom'] = [m.strip() for m in novos_mots.split(",") if m.strip()]
+                        novos_mots = st.text_input(
+                            "Adicionar motivos (separados por vírgula)",
+                            value=motivos_atuais,
+                            key=f"mot_cust_{i}"
+                        )
+
+                        col_save, col_del = st.columns([3, 1])
+
+                        # FIX 3: botão de salvar explícito para título, status e motivos
+                        if col_save.button("💾 Salvar Alterações", key=f"gest_save_{i}", use_container_width=True, type="primary"):
+                            proj_gest['titulo'] = novo_titulo
+                            # FIX 4: grava data_conclusao quando status muda para Concluído
+                            status_anterior = proj_gest.get('status', 'Ativo')
+                            proj_gest['status'] = novo_status
+                            if novo_status == "Concluído" and status_anterior != "Concluído":
+                                proj_gest['data_conclusao'] = datetime.now().strftime("%d/%m/%Y %H:%M")
+                            elif novo_status != "Concluído":
+                                proj_gest['data_conclusao'] = None
+                            proj_gest['motivos_custom'] = [m.strip() for m in novos_mots.split(",") if m.strip()]
                             salvar_seguro()
+                            st.success("Projeto atualizado!")
                             st.rerun()
-                        if st.button("🗑️ Excluir Projeto", key=f"gest_del_{i}"):
+
+                        if col_del.button("🗑️ Excluir", key=f"gest_del_{i}", use_container_width=True):
                             st.session_state.db_pqi.pop(i)
                             salvar_seguro()
                             st.rerun()
 
+            # ---------------------------------------------------------
             with sub_g2:
                 st.subheader("📓 Diário de Situações")
                 with st.container(border=True):
@@ -175,10 +219,16 @@ def exibir(user_role="OPERACIONAL"):
                             salvar_seguro()
                             st.success("Demanda registrada!")
                             st.rerun()
+                        else:
+                            st.warning("Informe o título da solicitação.")
 
                 st.divider()
                 if st.session_state.situacoes_diarias:
-                    ver_status = st.multiselect("Filtrar Status:", ["Pendente", "Executado", "Cancelado", "Não Possível"], default=["Pendente"])
+                    ver_status = st.multiselect(
+                        "Filtrar Status:",
+                        ["Pendente", "Executado", "Cancelado", "Não Possível"],
+                        default=["Pendente"]
+                    )
 
                     for idx, sit in enumerate(st.session_state.situacoes_diarias):
                         if not ver_status or sit.get('status', 'Pendente') in ver_status:
@@ -194,7 +244,12 @@ def exibir(user_role="OPERACIONAL"):
                                 st.write(f"**Registrado:** {data_reg} | **Lembrete:** {lembrete}")
                                 st.info(f"**Detalhes:** {detalhes_texto}")
 
+                                # FIX 5: exibe obs_final quando situação não está mais pendente
+                                if status_atual != "Pendente" and sit.get('obs_final'):
+                                    st.caption(f"📝 Observação: {sit['obs_final']}")
+
                                 if status_atual == "Pendente":
+                                    # FIX 6: c_btn3 agora implementado com "Não Possível"
                                     c_btn1, c_btn2, c_btn3, c_btn4 = st.columns(4)
 
                                     if c_btn1.button("✅ Executado", key=f"ok_{idx}"):
@@ -210,12 +265,23 @@ def exibir(user_role="OPERACIONAL"):
                                             salvar_seguro()
                                             st.rerun()
 
+                                    # FIX 6 (cont.): botão "Não Possível" antes inexistente
+                                    with c_btn3.popover("⚠️ Não Possível"):
+                                        motivo_np = st.text_input("Motivo", key=f"txt_np_{idx}")
+                                        if st.button("Confirmar", key=f"btn_np_{idx}"):
+                                            st.session_state.situacoes_diarias[idx]['status'] = "Não Possível"
+                                            st.session_state.situacoes_diarias[idx]['obs_final'] = motivo_np
+                                            salvar_seguro()
+                                            st.rerun()
+
                                     if c_btn4.button("🗑️ Excluir", key=f"del_sit_{idx}"):
                                         st.session_state.situacoes_diarias.pop(idx)
                                         salvar_seguro()
                                         st.rerun()
 
+    # =========================================================
     # --- 3. OPERAÇÃO PQI ---
+    # =========================================================
     with tab_operacao:
         st.subheader("🚀 Operação de Processos")
         projs = st.session_state.db_pqi
@@ -228,7 +294,7 @@ def exibir(user_role="OPERACIONAL"):
             filtrados = [p for p in projs if p.get('status', 'Ativo') == map_status[status_sel]]
 
             if filtrados:
-                proj_escolha = c_f2.selectbox("Selecione o Projeto:", [p['titulo'] for p in filtrados])  # ✅ FIX: renomeado para evitar conflito com 'escolha' do main.py
+                proj_escolha = c_f2.selectbox("Selecione o Projeto:", [p['titulo'] for p in filtrados])
                 projeto = next(p for p in filtrados if p['titulo'] == proj_escolha)
 
                 st.write("")
@@ -243,6 +309,7 @@ def exibir(user_role="OPERACIONAL"):
 
                 t_exec, t_dossie, t_esforco = st.tabs(["📝 Execução Diária", "📁 Dossiê", "📊 Análise"])
 
+                # =====================================================
                 with t_exec:
                     col_e1, col_e2 = st.columns([2, 1])
 
@@ -308,33 +375,52 @@ def exibir(user_role="OPERACIONAL"):
                                     salvar_seguro()
                                     st.success("Atividade e Lembrete criados!")
                                     st.rerun()
+                                else:
+                                    st.warning("Informe o nome da atividade.")
 
                         # --- EXIBIÇÃO DO CHECKLIST ---
                         atividades_fase = [a for a in projeto.get('checklist', []) if a.get('fase_origem') == projeto['fase']]
 
                         if atividades_fase:
+                            # FIX 7: contagem de progresso do checklist
+                            total_ativ = len(atividades_fase)
+                            concluidas_ativ = sum(1 for a in atividades_fase if a.get('status') == "Concluído")
+                            st.progress(concluidas_ativ / total_ativ, text=f"{concluidas_ativ}/{total_ativ} atividades concluídas")
+
                             for idx_a, ativ in enumerate(atividades_fase):
                                 with st.container(border=True):
                                     col_a, col_b, col_c = st.columns([0.1, 0.5, 0.4])
 
                                     is_concluido = ativ.get('status') == "Concluído"
 
-                                    if col_a.checkbox("", key=f"chk_exec_{ativ['id']}_{idx_a}", value=is_concluido):
-                                        if not is_concluido:
-                                            for item in projeto['checklist']:
-                                                if item['id'] == ativ['id']:
-                                                    item['status'] = "Concluído"
-                                            salvar_seguro()
-                                            st.rerun()
+                                    # FIX 8: checkbox bidirecional — marca E desmarca corretamente
+                                    checkbox_val = col_a.checkbox("", key=f"chk_exec_{ativ['id']}_{idx_a}", value=is_concluido)
 
-                                    status_style = "~~" if is_concluido else ""
+                                    if checkbox_val and not is_concluido:
+                                        # Usuário marcou como concluído
+                                        for item in projeto['checklist']:
+                                            if item['id'] == ativ['id']:
+                                                item['status'] = "Concluído"
+                                                break
+                                        salvar_seguro()
+                                        st.rerun()
+                                    elif not checkbox_val and is_concluido:
+                                        # FIX 8 (cont.): usuário desmarcou — reverte para Pendente
+                                        for item in projeto['checklist']:
+                                            if item['id'] == ativ['id']:
+                                                item['status'] = "Pendente"
+                                                break
+                                        salvar_seguro()
+                                        st.rerun()
+
+                                    status_style_open = "~~" if is_concluido else ""
+                                    status_style_close = "~~" if is_concluido else ""
                                     qtd_p = ativ.get('prorrogacoes', 0)
                                     badge_p = f" ⚠️ *({qtd_p}x)*" if qtd_p > 0 else ""
 
-                                    col_b.markdown(f"{status_style}**{ativ['tarefa']}** ({ativ['responsavel']}){status_style}{badge_p}")
+                                    col_b.markdown(f"{status_style_open}**{ativ['tarefa']}** ({ativ['responsavel']}){status_style_close}{badge_p}")
                                     col_c.caption(f"📅 Limite: {ativ['prazo']}")
 
-                                    # ✅ FIX 2 e 3: bloco de prorrogação limpo, sem código morto e sem renderização duplicada
                                     if not is_concluido:
                                         with col_c.popover("⏳ Prorrogar"):
                                             nova_dt = st.date_input("Nova Data", key=f"new_dt_{ativ['id']}_{idx_a}")
@@ -359,7 +445,7 @@ def exibir(user_role="OPERACIONAL"):
                                                             "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
                                                             "fase_origem": projeto['fase']
                                                         })
-                                                        break  # ✅ Sai do loop após encontrar o item
+                                                        break
                                                 salvar_seguro()
                                                 st.success("Prazo prorrogado!")
                                                 st.rerun()
@@ -368,6 +454,15 @@ def exibir(user_role="OPERACIONAL"):
 
                     with col_e2:
                         st.markdown("#### ⚙️ Controle")
+
+                        # FIX 9: alerta ao avançar com checklist incompleto
+                        atividades_pendentes = [
+                            a for a in projeto.get('checklist', [])
+                            if a.get('fase_origem') == projeto['fase'] and a.get('status') != "Concluído"
+                        ]
+                        if atividades_pendentes:
+                            st.warning(f"⚠️ {len(atividades_pendentes)} atividade(s) pendente(s) nesta fase.")
+
                         if st.button("▶️ AVANÇAR", use_container_width=True, type="primary") and projeto['fase'] < 8:
                             projeto['fase'] += 1
                             salvar_seguro()
@@ -387,6 +482,7 @@ def exibir(user_role="OPERACIONAL"):
                                     salvar_seguro()
                                     st.rerun()
 
+                # =====================================================
                 with t_dossie:
                     sub_dos1, sub_dos2 = st.tabs(["📂 Pastas", "📜 Histórico"])
 
@@ -394,9 +490,12 @@ def exibir(user_role="OPERACIONAL"):
                         with st.popover("➕ Criar Pasta"):
                             nome_pasta = st.text_input("Nome da Pasta")
                             if st.button("Salvar Pasta"):
-                                projeto.setdefault('pastas_virtuais', {})[nome_pasta] = []
-                                salvar_seguro()
-                                st.rerun()
+                                if nome_pasta:
+                                    projeto.setdefault('pastas_virtuais', {})[nome_pasta] = []
+                                    salvar_seguro()
+                                    st.rerun()
+                                else:
+                                    st.warning("Informe um nome para a pasta.")
 
                         pastas = projeto.get('pastas_virtuais', {})
                         for p_nome in list(pastas.keys()):
@@ -448,12 +547,31 @@ def exibir(user_role="OPERACIONAL"):
                         df_hist = pd.DataFrame(projeto.get('notas', []))
                         if not df_hist.empty:
                             st.dataframe(df_hist, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Nenhum registro histórico encontrado.")
 
+                # =====================================================
                 with t_esforco:
                     df_esf = pd.DataFrame(projeto.get('notas', []))
                     if not df_esf.empty:
                         st.markdown(f"### Análise: {projeto['titulo']}")
-                        fig = px.pie(df_esf['motivo'].value_counts().reset_index(), values='count', names='motivo', hole=0.4)
+                        fig = px.pie(
+                            df_esf['motivo'].value_counts().reset_index(),
+                            values='count', names='motivo', hole=0.4
+                        )
                         st.plotly_chart(fig, use_container_width=True)
+
+                        # FIX 10: gráfico de esforço por departamento
+                        if 'depto' in df_esf.columns:
+                            st.markdown("#### Ações por Departamento")
+                            fig_depto = px.bar(
+                                df_esf['depto'].value_counts().reset_index(),
+                                x='depto', y='count',
+                                labels={'depto': 'Departamento', 'count': 'Ações'},
+                                color_discrete_sequence=['#002366']
+                            )
+                            st.plotly_chart(fig_depto, use_container_width=True)
+                    else:
+                        st.info("Nenhum dado de esforço registrado.")
             else:
                 st.info("Nenhum projeto com este status.")
