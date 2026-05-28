@@ -217,13 +217,37 @@ def exibir(user_role):
         else:
             st.info("Nenhuma carta aguardando assinatura.")
 
-    # [Abas de Fechamento, Histórico e Config seguem lógica similar de estilo]
-    with tabs[2]: # Fechamento
+        # 3. FECHAMENTO DE LOTE
+    with tabs[2]:
+        # Filtra apenas o que está "CARTA RECEBIDA"
         prontas = [c for c in cartas if c.get('status') == "CARTA RECEBIDA"]
-        if prontas:
-            st.dataframe(pd.DataFrame(prontas)[['NOME', 'VALOR', 'LOJA']])
-            if st.button("🚀 Fechar Lote"):
-                # Lógica de lote...
-                st.success("Lote Fechado!")
+        
+        if not prontas:
+            st.info("Nenhuma carta assinada pronta para fechamento.")
         else:
-            st.info("Nada pronto para fechar.")
+            st.subheader(f"📦 Lote pronto: {len(prontas)} itens")
+            # Mostra o que vai ser fechado
+            st.dataframe(pd.DataFrame(prontas)[['NOME', 'VALOR', 'LOJA', 'COD_CLI']])
+            
+            if st.button("🚀 FINALIZAR LOTE E ENVIAR AO HISTÓRICO"):
+                # Cria um ID único baseado no tempo atual
+                id_lote = datetime.now().strftime("%Y%m%d_%H%M")
+                ids_cartas = [c['id'] for c in prontas]
+                
+                # 1. Registra o lote na coleção 'lotes_rh'
+                fire.collection("lotes_rh").document(id_lote).set({
+                    "id": id_lote, 
+                    "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "total": len(prontas), 
+                    "ids_cartas": ids_cartas
+                })
+                
+                # 2. Atualiza o status de cada carta para 'LOTE_FECHADO'
+                for id_c in ids_cartas:
+                    fire.collection("cartas_rh").document(id_c).update({
+                        "status": "LOTE_FECHADO",
+                        "id_lote": id_lote
+                    })
+                
+                st.success(f"Lote {id_lote} finalizado com sucesso!")
+                st.rerun() # Atualiza a página e remove as cartas desta aba
