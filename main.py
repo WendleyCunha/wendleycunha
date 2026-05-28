@@ -3,6 +3,7 @@ import configuracao as config
 from modulos import database as db
 from views import home, login
 from datetime import datetime
+from pwa_inject import injetar_pwa
 
 # --- 1. FUNÇÃO DE CACHE ---
 # Otimizado: agora o cache limpa automaticamente se houver erro, evitando travar o app
@@ -16,6 +17,7 @@ def obter_usuarios_cache():
 
 # --- 2. CONFIGURAÇÃO INICIAL E ESTILO ---
 config.configurar_pagina()
+injetar_pwa()
 
 # CSS de Alta Prioridade - Mantida sua estilização Azul e Dourado
 st.markdown("""
