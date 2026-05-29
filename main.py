@@ -115,11 +115,7 @@ escolha = config.desenhar_sidebar(user_info, menu_options)
 try:
     if escolha == "Home":
         home.exibir(user_info)
-        
-    elif "Manutenção" in escolha:
-        from modulos import mod_manutencao
-        mod_manutencao.main()
-        
+
     elif "Minha Spin" in escolha:
         from modulos import mod_spin
         # Passando user_info para manter a personalização do SpinGenius
