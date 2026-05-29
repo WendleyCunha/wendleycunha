@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-import database as db
+from modulos import database as db
 import pytz
 
 def exibir_tamagotchi(user_info):
