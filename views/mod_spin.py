@@ -7,12 +7,10 @@ import database as db
 import pytz
 
 def exibir_tamagotchi(user_info):
-    # --- 1. CONFIGURAÇÃO DE TEMPO ---
     fuso_brasil = pytz.timezone('America/Sao_Paulo')
     agora = datetime.now(fuso_brasil)
     data_hoje_str = agora.strftime("%d/%m/%Y %H:%M")
 
-    # --- 2. CARREGAMENTO DE DADOS ---
     if 'dados_spin' not in st.session_state:
         st.session_state.dados_spin = db.carregar_dados_spin()
 
@@ -20,14 +18,13 @@ def exibir_tamagotchi(user_info):
     historico = st.session_state.dados_spin.get('historico', [])
     inspecoes = st.session_state.dados_spin.get('inspecoes', [])
 
-    # --- 3. REGRAS DE OURO DO PERITO (ITENS VITAIS ADICIONADOS) ---
     REGRAS_MANUTENCAO = {
         "Óleo Motor (5W30)": [5000, 6], 
         "Filtros (Ar/Comb/Óleo)": [10000, 12],
         "Velas e Cabos": [30000, 24],
         "Correia Dentada": [50000, 48],
-        "Bomba D'água": [50000, 48], # Vital: Troca com a correia
-        "Válvula Termostática": [40000, 36], # Evita o superaquecimento
+        "Bomba D'água": [50000, 48],
+        "Válvula Termostática": [40000, 36],
         "Bobina de Ignição": [60000, 48],
         "Fluido Câmbio (GF6)": [40000, 24],
         "Arrefecimento (Aditivo Rosa)": [30000, 24],
@@ -36,7 +33,14 @@ def exibir_tamagotchi(user_info):
         "Sonda Lambda": [80000, 60]
     }
 
-    # --- 4. CSS SOFISTICADO (ESTILO TELEMETRIA) ---
+    CATEGORIAS = {
+        "Abastecimento": ["Gasolina", "Etanol", "GNV"],
+        "Manutenção Preventiva": list(REGRAS_MANUTENCAO.keys()),
+        "Manutenção Corretiva": ["Suspensão", "Freios", "Elétrica", "Ar Condicionado"],
+        "Outros": ["IPVA/Seguro", "Estética", "Upgrades"]
+    }
+
+    # CSS
     st.markdown(f"""
         <style>
         .main {{ background-color: #f1f5f9; }}
@@ -50,15 +54,6 @@ def exibir_tamagotchi(user_info):
 
     st.markdown(f"<div class='relogio'>🛰️ SENSOR SPIN ATIVO | {data_hoje_str}</div>", unsafe_allow_html=True)
 
-    # --- 5. LÓGICA DE CATEGORIAS ---
-    CATEGORIAS = {
-        "Abastecimento": ["Gasolina", "Etanol", "GNV"],
-        "Manutenção Preventiva": list(REGRAS_MANUTENCAO.keys()),
-        "Manutenção Corretiva": ["Suspensão", "Freios", "Elétrica", "Ar Condicionado"],
-        "Outros": ["IPVA/Seguro", "Estética", "Upgrades"]
-    }
-
-    # --- 6. SIDEBAR ---
     with st.sidebar:
         st.header("🎮 Controle de KM")
         novo_km = st.number_input("Odômetro Atual:", value=km_atual, step=10)
@@ -69,23 +64,18 @@ def exibir_tamagotchi(user_info):
         st.divider()
         st.info("💡 Perito: Na Spin, barulho de 'maquina de costura' pode ser tucho ou comando seco. Atenção ao óleo!")
 
-    # --- 7. TABS ---
     tab_dash, tab_registro, tab_saude, tab_inspecao = st.tabs(["📊 DASHBOARD", "📝 LANÇAR", "🩺 SAÚDE VITAL", "🔍 INSPEÇÃO"])
 
     df_base = pd.DataFrame(historico) if historico else pd.DataFrame()
 
-   # --- ABA DASHBOARD (SOFISTICADO) ---
     with tab_dash:
         if not df_base.empty:
-            # --- FILTRO DE HORIZONTE TEMPORAL (NOVO) ---
             st.markdown("### 📅 Filtro de Período")
             df_base['Data'] = pd.to_datetime(df_base['Data'])
             hoje = datetime.now().date()
             
-            # Cálculo do início do seu mês personalizado (Dia 14)
             data_inicio_mes = hoje.replace(day=14)
             if data_inicio_mes > hoje:
-                # Se hoje for antes do dia 14, o ciclo começou no dia 14 do mês passado
                 mes_anterior = (hoje.month - 2) % 12 + 1
                 ano_ajuste = hoje.year if hoje.month > 1 else hoje.year - 1
                 data_inicio_mes = data_inicio_mes.replace(month=mes_anterior, year=ano_ajuste)
@@ -99,11 +89,8 @@ def exibir_tamagotchi(user_info):
             
             selecao = st.radio("Selecione o horizonte:", list(opcoes_periodo.keys()), horizontal=True)
             data_limite = pd.to_datetime(opcoes_periodo[selecao])
-            
-            # DataFrame Filtrado para o Dash
             df_dash = df_base[df_base['Data'] >= data_limite].copy()
 
-            # --- LÓGICA DE CONSUMO (BASEADA NO FILTRO) ---
             df_combustivel = df_dash[df_dash['Litros'] > 0].sort_values('KM')
             media_periodo = 0
             if len(df_combustivel) > 1:
@@ -111,9 +98,7 @@ def exibir_tamagotchi(user_info):
                 total_km_rodados = df_combustivel['KM'].iloc[-1] - df_combustivel['KM'].iloc[0]
                 media_periodo = total_km_rodados / total_litros if total_litros > 0 else 0
 
-            # --- MÉTRICAS (PRESERVADAS E ATUALIZADAS) ---
             total_gasto = df_dash['Real'].sum()
-            # O KM rodado no período é o Delta KM do filtro
             km_no_periodo = df_dash['KM'].max() - df_dash['KM'].min() if not df_dash.empty else 0
             custo_por_km = total_gasto / km_no_periodo if km_no_periodo > 0 else 0
             
@@ -124,15 +109,12 @@ def exibir_tamagotchi(user_info):
             c4.metric("Último KM", f"{km_atual:,} KM")
 
             st.divider()
-
             col_esq, col_dir = st.columns([1.5, 1])
             with col_esq:
-                # Gráfico de Tendência (MANTIDO)
                 fig_timeline = px.area(df_dash.sort_values('Data'), x='Data', y='Real', color='Tipo',
                                       title=f"Investimentos: {selecao}", color_discrete_sequence=px.colors.qualitative.Safe)
                 st.plotly_chart(fig_timeline, use_container_width=True)
                 
-                # Tabela Técnica Oculta (MANTIDA)
                 if not df_combustivel.empty:
                     with st.expander("⛽ Detalhes de Abastecimento do Período", expanded=False):
                         df_tec = df_combustivel.copy()
@@ -140,9 +122,7 @@ def exibir_tamagotchi(user_info):
                         st.dataframe(df_tec[['Data', 'Item', 'Litros', 'KM_L']].sort_values('Data', ascending=False), use_container_width=True)
             
             with col_dir:
-                # Distribuição (MANTIDA)
-                fig_pie = px.sunburst(df_dash, path=['Tipo', 'Item'], values='Real', 
-                                      title="Distribuição de Custos")
+                fig_pie = px.sunburst(df_dash, path=['Tipo', 'Item'], values='Real', title="Distribuição de Custos")
                 st.plotly_chart(fig_pie, use_container_width=True)
             
             st.subheader(f"📋 Registros: {selecao}")
@@ -150,7 +130,6 @@ def exibir_tamagotchi(user_info):
         else:
             st.warning("Sem dados para processar o dashboard. Vá em 'Lançar'.")
 
-    # --- ABA REGISTRO (CORRIGIDA) ---
     with tab_registro:
         st.subheader("Novo Lançamento Financeiro")
         baixa_em_curso = st.session_state.get('baixa_em_curso', None)
@@ -162,12 +141,9 @@ def exibir_tamagotchi(user_info):
         
         with st.form("form_registro_perito", clear_on_submit=True):
             col_a, col_b = st.columns(2)
-            # Ajuste de item automático caso venha de uma inspeção
             item_default = baixa_em_curso['item'] if baixa_em_curso else CATEGORIAS[tipo_sel][0]
-            
             item_f = col_a.text_input("Item/Serviço:", value=item_default)
             valor_f = col_b.number_input("Valor Real (R$):", min_value=0.0)
-            
             col_c, col_d = st.columns(2)
             km_f = col_c.number_input("KM no momento:", value=km_atual)
             litros_f = col_d.number_input("Litros (se abastecimento):", min_value=0.0)
@@ -182,36 +158,31 @@ def exibir_tamagotchi(user_info):
                     "Litros": float(litros_f)
                 }
                 st.session_state.dados_spin['historico'].append(novo_evento)
-                
-                # Limpa a baixa se existir
                 if baixa_em_curso:
                     st.session_state.dados_spin['inspecoes'].pop(baixa_em_curso['index'])
                     del st.session_state['baixa_em_curso']
-                
                 db.salvar_dados_spin(st.session_state.dados_spin)
                 st.success("Dados salvos com sucesso!")
                 st.rerun()
 
-    # --- ABA SAÚDE ---
     with tab_saude:
         st.subheader("Status de Fadiga dos Componentes")
         cols = st.columns(3)
         for idx, (peca, limites) in enumerate(REGRAS_MANUTENCAO.items()):
-            km_ref, data_ref = 127000, datetime(2025, 1, 1, tzinfo=fuso_brasil)
+            km_ref = 127000
+            data_ref = datetime(2025, 1, 1, tzinfo=fuso_brasil)
             
             if not df_base.empty and peca in df_base['Item'].values:
                 last = df_base[df_base['Item'] == peca].sort_values('KM', ascending=False).iloc[0]
                 km_ref = last['KM']
-    
-    # CORREÇÃO AQUI: Verifica se já é datetime ou se ainda é string
                 dt_temp = last['Data']
                 if isinstance(dt_temp, str):
                     data_ref = datetime.strptime(dt_temp, "%Y-%m-%d").replace(tzinfo=fuso_brasil)
+                elif hasattr(dt_temp, 'to_pydatetime'):
+                    data_ref = dt_temp.to_pydatetime().replace(tzinfo=fuso_brasil)
                 else:
-        # Se já for datetime (causado pelo filtro novo), apenas garante o fuso horário
-                    data_ref = dt_temp.to_pydatetime().replace(tzinfo=fuso_brasil) if hasattr(dt_temp, 'to_pydatetime') else dt_temp.replace(tzinfo=fuso_brasil)
+                    data_ref = dt_temp.replace(tzinfo=fuso_brasil)
             
-            # Cálculo de Saúde
             vida_km = 100 - ((km_atual - km_ref) / limites[0] * 100)
             vida_tempo = 100 - ((agora - data_ref).days / (limites[1] * 30) * 100)
             saude_final = max(0, int(min(vida_km, vida_tempo)))
@@ -228,7 +199,6 @@ def exibir_tamagotchi(user_info):
                     </div>
                 """, unsafe_allow_html=True)
 
-    # --- ABA INSPEÇÃO ---
     with tab_inspecao:
         st.subheader("Checklist de Campo (Ouvido e Olho)")
         with st.form("f_insp"):
