@@ -50,7 +50,6 @@ def configurar_pagina():
 def desenhar_sidebar(user_info, menu_options):
     mapa_icones = {
         "Home": "house",
-        "Manutenção": "tools",
         "Processos": "diagram-3",
         "RH Docs": "file-text",
         "Operação": "box",
