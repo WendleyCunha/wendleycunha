@@ -52,7 +52,7 @@ def exibir(user_info):
     # AJUSTADO: Agora pegando a data correta baseada no fuso horário do Brasil
     hoje_dt = agora_br().date()
     
-    tab_esforco, tab_pendentes, tab_agenda, tab_novo, tab_perfil = st.tabs([
+    tab_esforco, tab_pendentes, tab_agenda, tab_novo, tab_perfil, tab_bi = st.tabs([
         "⚡ Esforço Hoje",
         "🚀 Pendências",
         "📅 Agenda",
