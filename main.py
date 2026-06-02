@@ -411,5 +411,9 @@ try:
 
 except Exception as e:
     st.error(f"Ocorreu um erro ao carregar o módulo: {escolha}")
-    st.info("Tente atualizar a página ou contatar o administrador.")
+    st.info("Abaixo está o erro real capturado pelo Python para podermos corrigir:")
+    
+    # ISSO VAI MOSTRAR O TRACEBACK COMPLETO NA TELA DO SEU NAVEGADOR:
+    st.exception(e) 
+    
     print(f"DEBUG: Erro no módulo {escolha}: {e}")
