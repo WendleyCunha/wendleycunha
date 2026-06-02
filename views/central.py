@@ -181,7 +181,7 @@ def exibir(is_adm):
         data_min = df_fin['data_ref'].min().date()
         data_max = df_fin['data_ref'].max().date()
 
-        # ── FILTROS ───────────────────────────────────────────────────────────
+# ── FILTROS ───────────────────────────────────────────────────────────
         st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
         st.markdown("##### 🔍 Filtros")
 
@@ -199,15 +199,18 @@ def exibir(is_adm):
         user_f   = col_u.selectbox("👤 Operador", lista_usuarios, key="dash_user")
         motivo_f = col_m.selectbox("📌 Motivo",   lista_motivos,  key="dash_motivo")
 
+        # AJUSTADO: Garante a data correta de Brasília independente de onde o servidor está hospedado
+        hoje_br = pd.Timestamp.now('America/Sao_Paulo').date()
+
         if periodo == "Hoje":
-            de  = date.today()
-            ate = date.today()
+            de  = hoje_br
+            ate = hoje_br
         elif periodo == "Últimos 7 dias":
-            de  = date.today() - timedelta(days=6)
-            ate = date.today()
+            de  = hoje_br - timedelta(days=6)
+            ate = hoje_br
         elif periodo == "Este mês":
-            de  = date.today().replace(day=1)
-            ate = date.today()
+            de  = hoje_br.replace(day=1)
+            ate = hoje_br
         else:
             col_de, col_ate = st.columns(2)
             de  = col_de.date_input("De",  value=data_min, min_value=data_min, max_value=data_max, key="dash_de")
@@ -215,8 +218,9 @@ def exibir(is_adm):
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        ts_de  = pd.Timestamp(de)
-        ts_ate = pd.Timestamp(ate) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+        # AJUSTADO: Adicionado .tz_localize('America/Sao_Paulo') para resolver o TypeError de comparação
+        ts_de  = pd.Timestamp(de).tz_localize('America/Sao_Paulo')
+        ts_ate = (pd.Timestamp(ate) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)).tz_localize('America/Sao_Paulo')
 
         df_view = df_fin.copy()
         df_view = df_view[(df_view['data_ref'] >= ts_de) & (df_view['data_ref'] <= ts_ate)]
@@ -227,7 +231,6 @@ def exibir(is_adm):
 
         if df_view.empty:
             st.warning("Nenhum dado para os filtros selecionados.")
-            return
 
         # ── KPIs ─────────────────────────────────────────────────────────────
         total_ativ   = len(df_view)
