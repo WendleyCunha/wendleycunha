@@ -7,7 +7,7 @@ import streamlit as st
 MAPA_MODULOS_MESTRE = {
     "🛏️ Portal Cliente":  "portal_cliente",
     "📋 Processos (PQI)": "processos",
-    "📓 Diário de Bordo":  "diario",
+    "📝 Diário de Bordo": "id_diario",
     "📄 RH Docs / Cartas": "rh_docs",
 }
 
