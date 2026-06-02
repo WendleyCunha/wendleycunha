@@ -1,39 +1,32 @@
-# modulos/utils_tempo.py
 from datetime import datetime
 import pytz
 
-FUSO_BR = pytz.timezone("America/Sao_Paulo")
+TZ_BR = pytz.timezone("America/Sao_Paulo")
 
-def agora_br() -> datetime:
-    """Retorna datetime atual no horário de Brasília, sem fuso (naive)."""
-    return datetime.now(FUSO_BR).replace(tzinfo=None)
+def agora_br():
+    """Retorna datetime atual no fuso de São Paulo (tz-aware)."""
+    return datetime.now(TZ_BR)
 
-def parse_dt(valor) -> datetime | None:
+def agora_iso():
+    """Retorna string ISO do momento atual em São Paulo."""
+    return agora_br().isoformat()
+
+def parse_dt_safe(valor):
     """
-    Converte qualquer string/datetime para datetime naive (horário de Brasília).
-    Nunca lança exceção — retorna None se não conseguir.
+    Tenta converter qualquer string de data/hora para datetime tz-aware (SP).
+    Retorna None em caso de falha.
     """
-    if valor is None:
+    if not valor:
         return None
     try:
         if isinstance(valor, datetime):
-            dt = valor
-        else:
-            dt = datetime.fromisoformat(str(valor))
-
-        # Se tem fuso, converte para Brasília e remove o fuso
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(FUSO_BR).replace(tzinfo=None)
-
-        return dt
+            if valor.tzinfo is None:
+                return TZ_BR.localize(valor)
+            return valor.astimezone(TZ_BR)
+        # Remove microsegundos extras e tenta parsear
+        dt = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            return TZ_BR.localize(dt)
+        return dt.astimezone(TZ_BR)
     except Exception:
-        return None  # ← nunca trava, só retorna None
-
-def agora_iso() -> str:
-    """Retorna string ISO do momento atual em Brasília. Use para salvar no Firebase."""
-    return agora_br().isoformat()
-
-def parse_dt_safe(valor, fallback=None) -> datetime:
-    """Como parse_dt mas retorna fallback (default: agora) se falhar."""
-    resultado = parse_dt(valor)
-    return resultado if resultado is not None else (fallback or agora_br())
+        return None
