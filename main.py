@@ -4,7 +4,6 @@ from modulos import database as db
 from views import home, login
 from datetime import datetime
 from pwa_inject import injetar_pwa
-from modulos import mod_diario_de_bordo
 
 
 # --- 1. CACHE DE USUÁRIOS ---
