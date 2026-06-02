@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import streamlit.components.v1 as components
 from datetime import datetime
 from modulos.utils_tempo import agora_br, agora_iso, parse_dt_safe
 from modulos import database as db
@@ -56,7 +57,8 @@ def exibir(user_info):
         "🚀 Pendências",
         "📅 Agenda",
         "➕ Novo",
-        "👤 Perfil"
+        "👤 Perfil",
+        "📊 BI King Star"
     ])
 
     # --- ABA 1: ESFORÇO ---
@@ -286,3 +288,15 @@ def exibir(user_info):
             st.image(f"fotos/{user_info['nome']}.png", width=150)
         except:
             st.info("Você ainda não possui foto.")
+
+# --- ABA 6: BI KING STAR ---
+    with tab_bi:
+        st.subheader("📊 BI - King Star Colchões")
+        
+        # Link externo caso o usuário prefira abrir em tela cheia
+        st.markdown("🔗 **[Abrir o BI em uma nova guia ↗️](http://172.20.33.88/bi/index.php)**")
+        st.divider()
+        
+        # Iframe para embutir o site dentro do Streamlit
+        # Você pode ajustar o 'height' conforme ficar melhor na sua tela
+        components.iframe("http://172.20.33.88/bi/index.php", height=800, scrolling=True)
