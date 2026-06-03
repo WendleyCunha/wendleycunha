@@ -56,6 +56,18 @@ def exibir(user_info):
 
     st.title(f"Olá, {user_info['nome']}! 👋")
 
+    # Adicione este bloco na barra lateral
+    with st.sidebar:
+        st.markdown("---")
+        if st.button("🚪 Deslogar do Sistema", use_container_width=True):
+            # Limpa as variáveis de sessão de autenticação
+            st.session_state.autenticado = False
+            if 'user_info' in st.session_state:
+                del st.session_state.user_info
+            
+            # Recarrega a página para voltar à tela de login
+            st.rerun()
+
     # ── Carga de dados ────────────────────────────────────────────────────────
     projs          = db.carregar_projetos()
     diario         = db.carregar_diario()
