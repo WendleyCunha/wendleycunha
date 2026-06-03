@@ -2,35 +2,8 @@ import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
 from datetime import datetime
-from modulos.utils_tempo import agora_br, agora_iso, parse_dt_safe
+from modulos.utils_tempo import agora_br, parse_dt_safe
 from modulos import database as db
-
-# ── Importa o módulo de Diário de Trocas ─────────────────────────────────────
-try:
-    from modulos import mod_diario_de_bordo
-    HAS_DIARIO_TROCAS = True
-except ImportError:
-    try:
-        import mod_diario_de_bordo
-        HAS_DIARIO_TROCAS = True
-    except ImportError:
-        HAS_DIARIO_TROCAS = False
-
-
-# ── Configurações do BI ───────────────────────────────────────────────────────
-BI_BASE_URL   = "http://172.20.33.88/bi"
-BI_INDEX_PAGE = "index.php"
-
-# Mapeamento de páginas disponíveis no BI.
-# Adicione novas entradas aqui sempre que surgir uma nova página no sistema.
-BI_PAGINAS = {
-    "🏠 Dashboard Principal":  "index.php",
-    "📊 Grupo 2":              "grupo2.php",
-    "🖥️ Monitor Grupo 2":      "monitorg2.php",
-    # ── adicione novas páginas abaixo, sem alterar o resto do código ──────────
-    # "📦 Estoque":            "estoque.php",
-    # "💰 Financeiro":         "financeiro.php",
-}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -67,7 +40,7 @@ def finalizar_atividade_atual(nome_usuario):
 
 def exibir(user_info):
 
-    # ── Estilos globais ───────────────────────────────────────────────────────
+    # ── Estilos ───────────────────────────────────────────────────────────────
     st.markdown("""
         <style>
         .reminder-card, .diary-card {
@@ -78,25 +51,6 @@ def exibir(user_info):
         .reminder-card { border-left-color: #ef4444; }
         .diary-card    { border-left-color: #3b82f6; }
         .status-tag    { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; }
-
-        /* ── BI nav pills ────────────────────────────────────────────────── */
-        .bi-nav-container {
-            display: flex; flex-wrap: wrap; gap: 8px;
-            padding: 12px 0 16px;
-        }
-        .bi-pill {
-            background: #fff; border: 1.5px solid #e2e8f0;
-            border-radius: 20px; padding: 6px 16px;
-            font-size: 13px; font-weight: 600; color: #475569;
-            cursor: pointer; transition: all 0.2s;
-            font-family: 'Plus Jakarta Sans', sans-serif;
-        }
-        .bi-pill:hover   { border-color: #0d2145; color: #0d2145; background: #f8faff; }
-        .bi-pill.active  {
-            background: linear-gradient(135deg,#0d2145,#1a3a6e);
-            color: #FFD700; border-color: transparent;
-            box-shadow: 0 3px 10px rgba(13,33,69,0.3);
-        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -109,26 +63,14 @@ def exibir(user_info):
     motivos_gestao = db.carregar_motivos()
     hoje_dt        = agora_br().date()
 
-    # ── Definição das abas ────────────────────────────────────────────────────
-    lista_abas = [
+    # ── Abas  (sem Diário de Trocas e sem Perfil) ─────────────────────────────
+    tab_esforco, tab_pendentes, tab_agenda, tab_novo, tab_bi = st.tabs([
         "⚡ Esforço Hoje",
         "🚀 Pendências",
         "📅 Agenda",
         "➕ Novo",
-        "📓 Diário de Trocas",
-        "👤 Perfil",
         "📊 BI King Star",
-    ]
-
-    (
-        tab_esforco,
-        tab_pendentes,
-        tab_agenda,
-        tab_novo,
-        tab_diario_trocas,
-        tab_perfil,
-        tab_bi,
-    ) = st.tabs(lista_abas)
+    ])
 
     # ══════════════════════════════════════════════════════════════════════════
     # ABA 1 — ESFORÇO HOJE
@@ -232,7 +174,7 @@ def exibir(user_info):
                                     <strong>{p["titulo"]}</strong><br>{l["texto"]}
                                 </div>
                             ''', unsafe_allow_html=True)
-                            if st.button(f"Concluir", key=f"btn_pqi_{p_idx}_{l_idx}", use_container_width=True):
+                            if st.button("Concluir", key=f"btn_pqi_{p_idx}_{l_idx}", use_container_width=True):
                                 p['lembretes'].pop(l_idx)
                                 db.salvar_projetos(projs)
                                 st.rerun()
@@ -258,7 +200,7 @@ def exibir(user_info):
                                     <small>Resp: {sit.get('usuario', 'S/I')}</small>
                                 </div>
                             ''', unsafe_allow_html=True)
-                            if st.button(f"Concluir", key=f"btn_dir_{idx}", use_container_width=True):
+                            if st.button("Concluir", key=f"btn_dir_{idx}", use_container_width=True):
                                 sit['status'] = "Executado"
                                 db.salvar_diario(diario)
                                 st.rerun()
@@ -269,7 +211,7 @@ def exibir(user_info):
     # ABA 3 — AGENDA
     # ══════════════════════════════════════════════════════════════════════════
     with tab_agenda:
-        tipo_age  = st.radio("Visualizar compromissos de:", ["Apenas Meus", "Toda a Equipe"], horizontal=True)
+        tipo_age   = st.radio("Visualizar compromissos de:", ["Apenas Meus", "Toda a Equipe"], horizontal=True)
         agenda_raw = []
 
         for sit in diario:
@@ -320,7 +262,7 @@ def exibir(user_info):
             tipo = st.selectbox("Vincular a:", ["Situações Diárias (Diário)", "Processos (PQI)"])
             txt_lembrete = st.text_area("O que precisa ser feito?", placeholder="Descreva a tarefa...")
 
-            c1, c2  = st.columns(2)
+            c1, c2 = st.columns(2)
             d_agendada = c1.date_input("Para quando?", min_value=hoje_dt)
             h_agendada = c2.time_input("Qual horário?", value=datetime.now().time())
 
@@ -337,20 +279,20 @@ def exibir(user_info):
                         for p in projs:
                             if p['titulo'] == proj_vinc:
                                 p.setdefault('lembretes', []).append({
-                                    "id":       datetime.now().timestamp(),
+                                    "id":        datetime.now().timestamp(),
                                     "data_hora": data_f,
-                                    "texto":    txt_lembrete,
-                                    "status":   "Pendente",
+                                    "texto":     txt_lembrete,
+                                    "status":    "Pendente",
                                 })
                         db.salvar_projetos(projs)
                     else:
                         diario.append({
-                            "usuario":    user_info['nome'],
-                            "data_reg":   datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "usuario":     user_info['nome'],
+                            "data_reg":    datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "solicitacao": txt_lembrete,
-                            "depto":      "GERAL",
-                            "lembrete":   data_f,
-                            "status":     "Pendente",
+                            "depto":       "GERAL",
+                            "lembrete":    data_f,
+                            "status":      "Pendente",
                         })
                         db.salvar_diario(diario)
 
@@ -358,107 +300,17 @@ def exibir(user_info):
                     st.rerun()
 
     # ══════════════════════════════════════════════════════════════════════════
-    # ABA 5 — DIÁRIO DE TROCAS
-    # ══════════════════════════════════════════════════════════════════════════
-    with tab_diario_trocas:
-        if HAS_DIARIO_TROCAS:
-            mod_diario_de_bordo.exibir(user_info)
-        else:
-            st.error(
-                "⚠️ Módulo **mod_diario_de_bordo** não encontrado.\n\n"
-                "Certifique-se de que o arquivo `mod_diario_de_bordo.py` está em `modulos/`."
-            )
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # ABA 6 — PERFIL
-    # ══════════════════════════════════════════════════════════════════════════
-    with tab_perfil:
-        st.subheader("👤 Meu Perfil")
-
-        foto = st.file_uploader("Escolha uma foto", type=["png", "jpg", "jpeg"])
-        if foto is not None:
-            import os
-            os.makedirs("fotos", exist_ok=True)
-            caminho = f"fotos/{user_info['nome']}.png"
-            with open(caminho, "wb") as f:
-                f.write(foto.getbuffer())
-            st.success("Foto salva com sucesso!")
-
-        try:
-            st.image(f"fotos/{user_info['nome']}.png", width=150)
-        except Exception:
-            st.info("Você ainda não possui foto.")
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # ABA 7 — BI KING STAR  (navegação interna completa)
+    # ABA 5 — BI KING STAR  (abre direto monitorg2.php, sem seletor)
     # ══════════════════════════════════════════════════════════════════════════
     with tab_bi:
         st.subheader("📊 BI — King Star Colchões")
 
-        # ── Seletor de página ─────────────────────────────────────────────────
-        # Mantém a página selecionada no session_state para não resetar ao
-        # interagir com outros widgets da home.
-        if "bi_pagina_sel" not in st.session_state:
-            st.session_state["bi_pagina_sel"] = BI_INDEX_PAGE
+        BI_URL = "http://172.20.33.88/bi/monitorg2.php"
 
-        col_nav, col_link = st.columns([3, 1])
-
-        with col_nav:
-            # Radio horizontal com as páginas mapeadas
-            rotulos  = list(BI_PAGINAS.keys())
-            arquivos = list(BI_PAGINAS.values())
-
-            # Descobre o índice atual para manter a seleção
-            try:
-                idx_atual = arquivos.index(st.session_state["bi_pagina_sel"])
-            except ValueError:
-                idx_atual = 0
-
-            escolha_rotulo = st.radio(
-                "Página do BI:",
-                rotulos,
-                index=idx_atual,
-                horizontal=True,
-                key="bi_radio_pagina",
-                label_visibility="collapsed",
-            )
-            pagina_arquivo = BI_PAGINAS[escolha_rotulo]
-            st.session_state["bi_pagina_sel"] = pagina_arquivo
-
-        url_completa = f"{BI_BASE_URL}/{pagina_arquivo}"
-
-        with col_link:
-            st.markdown(
-                f"<br><a href='{url_completa}' target='_blank' "
-                f"style='font-size:13px;font-weight:600;color:#0d2145;text-decoration:none;'>"
-                f"↗️ Abrir em nova guia</a>",
-                unsafe_allow_html=True,
-            )
-
-        st.caption(f"🔗 {url_completa}")
+        st.markdown(
+            f"🔗 **[Abrir em nova guia ↗️]({BI_URL})**",
+            unsafe_allow_html=False,
+        )
         st.divider()
 
-        # ── Iframe que acompanha a página selecionada ─────────────────────────
-        # height=820 dá espaço generoso; ajuste se necessário.
-        components.iframe(url_completa, height=820, scrolling=True)
-
-        # ── Dica de uso ───────────────────────────────────────────────────────
-        with st.expander("ℹ️ Como adicionar novas páginas do BI"):
-            st.markdown("""
-            Abra o arquivo **`views/home.py`** (ou onde este módulo estiver salvo)
-            e localize o dicionário `BI_PAGINAS` no início do arquivo:
-
-            ```python
-            BI_PAGINAS = {
-                "🏠 Dashboard Principal":  "index.php",
-                "📊 Grupo 2":              "grupo2.php",
-                "🖥️ Monitor Grupo 2":      "monitorg2.php",
-                # adicione abaixo:
-                "📦 Estoque":              "estoque.php",
-            }
-            ```
-
-            Basta adicionar uma nova linha com o **nome que aparecerá no botão**
-            e o **nome do arquivo `.php`** correspondente.  
-            Nenhuma outra alteração no código é necessária.
-            """)
+        components.iframe(BI_URL, height=820, scrolling=True)
