@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import streamlit.components.v1 as components
 from datetime import datetime
 from modulos.utils_tempo import agora_br, agora_iso, parse_dt_safe
 from modulos import database as db
@@ -47,14 +48,17 @@ def exibir(user_info):
     diario = db.carregar_diario()
     atividades_log = db.carregar_esforco()
     motivos_gestao = db.carregar_motivos()
-    hoje_dt = datetime.now().date()
     
-    tab_esforco, tab_pendentes, tab_agenda, tab_novo, tab_perfil = st.tabs([
+    # AJUSTADO: Agora pegando a data correta baseada no fuso horário do Brasil
+    hoje_dt = agora_br().date()
+    
+    tab_esforco, tab_pendentes, tab_agenda, tab_novo, tab_perfil, tab_bi = st.tabs([
         "⚡ Esforço Hoje",
         "🚀 Pendências",
         "📅 Agenda",
         "➕ Novo",
-        "👤 Perfil"
+        "👤 Perfil",
+        "📊 BI King Star"
     ])
 
     # --- ABA 1: ESFORÇO ---
@@ -200,7 +204,7 @@ def exibir(user_info):
                         })
                 except: continue
 
-        # 2. Dados do PQI (Filtro por equipe se necessário, aqui mostramos tudo que for futuro)
+        # 2. Dados do PQI
         for p in projs:
             for l in p.get('lembretes', []):
                 try:
@@ -262,10 +266,8 @@ def exibir(user_info):
                     st.success(f"Tarefa agendada para {data_f}!")
                     st.rerun()
 
-
     # --- ABA 5: PERFIL ---
     with tab_perfil:
-
         st.subheader("👤 Meu Perfil")
 
         foto = st.file_uploader(
@@ -274,7 +276,6 @@ def exibir(user_info):
         )
 
         if foto is not None:
-
             caminho = f"fotos/{user_info['nome']}.png"
 
             with open(caminho, "wb") as f:
@@ -287,3 +288,15 @@ def exibir(user_info):
             st.image(f"fotos/{user_info['nome']}.png", width=150)
         except:
             st.info("Você ainda não possui foto.")
+
+# --- ABA 6: BI KING STAR ---
+    with tab_bi:
+        st.subheader("📊 BI - King Star Colchões")
+        
+        # Link externo caso o usuário prefira abrir em tela cheia
+        st.markdown("🔗 **[Abrir o BI em uma nova guia ↗️](http://172.20.33.88/bi/index.php)**")
+        st.divider()
+        
+        # Iframe para embutir o site dentro do Streamlit
+        # Você pode ajustar o 'height' conforme ficar melhor na sua tela
+        components.iframe("http://172.20.33.88/bi/index.php", height=800, scrolling=True)
