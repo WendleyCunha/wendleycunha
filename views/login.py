@@ -37,9 +37,7 @@ def exibir_login(usuarios: dict):
             login_id = st.text_input("Login", placeholder="Seu ID de acesso")
             senha    = st.text_input("Senha", type="password", placeholder="••••••••")
             entrar   = st.form_submit_button("Entrar", use_container_width=True, type="primary")
-
-        st.write("Usuários carregados:", usuarios.keys())
-        
+       
         if entrar:
             # Cria um dicionário auxiliar onde as chaves estão em minúsculo
             # Isso permite encontrar o usuário independente de como ele foi digitado
