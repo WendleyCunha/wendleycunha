@@ -6,10 +6,10 @@ from datetime import datetime
 from pwa_inject import injetar_pwa
 
 
-# --- 1. CACHE DE USUÁRIOS ---
-@st.cache_data(ttl=600)
+# --- 1. CARREGAR USUÁRIOS (Sem o cache que retém dados antigos) ---
 def obter_usuarios_cache():
     try:
+        # Chama a função diretamente sem o decorator de cache
         return db.carregar_usuarios_firebase()
     except Exception as e:
         st.error(f"Erro ao conectar com o banco de dados: {e}")
