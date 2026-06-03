@@ -394,10 +394,10 @@ try:
     if "Home" in escolha:
         home.exibir(user_info)
 
-    elif "Minha Spin" in escolha:
-        from modulos import mod_spin
-        mod_spin.exibir_tamagotchi(user_info)
-
+    elif "Diário de Trocas" in escolha:
+        from views import diario_de_bordo
+        diario_de_bordo.exibir(user_info)
+    
     elif "RH Docs" in escolha or "Cartas" in escolha:
         from views import mod_cartas
         mod_cartas.exibir(user_role)
