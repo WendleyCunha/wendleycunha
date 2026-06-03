@@ -317,7 +317,7 @@ def exibir(user_info):
     with tab_bi:
         st.subheader("📊 BI — King Star Colchões")
 
-        BI_URL = "http://172.20.33.88/bi/monitorg2.php"
+        BI_URL = "http://172.20.33.86:8900/webapp/?E=KINGSTAR&P=SIGAMDI&agent-port=39252"
 
         st.markdown(
             f"🔗 **[Abrir em nova guia ↗️]({BI_URL})**",
