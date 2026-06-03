@@ -3,7 +3,6 @@ views/login.py — Tela de login para usuários internos do sistema.
 """
 import streamlit as st
 
-
 def exibir_login(usuarios: dict):
     """Exibe formulário de login e autentica o usuário no session_state."""
 
@@ -40,10 +39,16 @@ def exibir_login(usuarios: dict):
             entrar   = st.form_submit_button("Entrar", use_container_width=True, type="primary")
 
         if entrar:
-            user = usuarios.get(login_id.strip())
+            # Cria um dicionário auxiliar onde as chaves estão em minúsculo
+            # Isso permite encontrar o usuário independente de como ele foi digitado
+            usuarios_case_insensitive = {k.lower(): v for k, v in usuarios.items()}
+            
+            login_input = login_id.strip().lower()
+            user = usuarios_case_insensitive.get(login_input)
+            
             if user and user.get("ativo", True) and str(user.get("senha", "")) == senha.strip():
                 st.session_state.autenticado = True
-                st.session_state.user_id     = login_id.strip()
+                st.session_state.user_id     = login_id.strip() # Mantém a grafia original do login
                 st.session_state.user_info   = user
                 st.rerun()
             else:
