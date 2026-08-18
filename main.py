@@ -61,6 +61,17 @@ st.set_page_config(
 BRT = timezone(timedelta(hours=-3))
 def agora_brt(): return datetime.now(BRT).strftime("%H:%M:%S")
 
+def _html(s: str) -> str:
+    """
+    [CORREÇÃO] Remove a indentação de cada linha de um bloco HTML antes de
+    passar pro st.markdown(). Sem isso, um HTML escrito com recuo de 4+
+    espaços (comum quando o st.markdown está dentro de um `with coluna:`)
+    é interpretado pelo MARKDOWN como um bloco de código — e aparece na
+    tela como texto cru, mesmo com unsafe_allow_html=True. Mesmo helper já
+    usado em modulo/mod_rastreio.py, pelo mesmo motivo.
+    """
+    return "\n".join(linha.lstrip() for linha in s.splitlines())
+
 def get_logo():
     if os.path.exists("logo.png"):
         with open("logo.png", "rb") as f:
@@ -169,7 +180,7 @@ logo_html = (f'<img src="data:image/png;base64,{lb}" style="height:50px;margin-r
 
 hc1, hc2 = st.columns([9, 1])
 with hc1:
-    st.markdown(f"""
+    st.markdown(_html(f"""
     <div class="ks-header">
         {logo_html}
         <div style="flex:1;">
@@ -177,7 +188,7 @@ with hc1:
             <div class="ks-sub">{user['nome']} · {agora_brt()}</div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """), unsafe_allow_html=True)
 with hc2:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("Sair", use_container_width=True):
