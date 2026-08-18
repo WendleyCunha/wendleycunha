@@ -543,6 +543,53 @@ def _aba_cadastros(datas_db):
 
 
 # ── ABA: Rastreio ao Vivo ────────────────────────────────────────────
+def _painel_motoristas_ao_vivo(candidatas, key_prefix="live"):
+    """
+    [NOVO] Coluna esquerda do Ao Vivo: agrupa as entregas do dia por
+    motorista, mostrando nome + total de entregas + % concluído (mesmo
+    estilo dos cards do Dashboard). Dentro de cada motorista (expander),
+    lista as entregas dele — clicar numa entrega define qual delas
+    aparece com o mapa na coluna direita.
+
+    Retorna o `_doc_id` da entrega clicada nesta execução, ou None se
+    nenhum clique novo aconteceu (nesse caso, quem chama deve usar o
+    valor já salvo em st.session_state, se houver).
+    """
+    candidatas = garantir_colunas(candidatas.copy()) if "_status_visual" not in candidatas.columns else candidatas
+
+    rotas = sorted(
+        r for r in candidatas["route"].unique()
+        if r and "não identificada" not in str(r).lower()
+    )
+
+    if not rotas:
+        st.info("Nenhum motorista com entrega identificável hoje.")
+        return None
+
+    clicado = None
+    for rota in rotas:
+        dr = candidatas[candidatas["route"] == rota]
+        nome = nome_motorista(rota)
+        total = len(dr)
+        concl = int((dr["_status_visual"] == "✅ Sucesso").sum()) if "_status_visual" in dr.columns else 0
+        pct = round(concl / total * 100) if total else 0
+
+        with st.expander(f"🧑‍✈️ **{nome}** · {total} entrega(s) · {pct}% concluído", expanded=False):
+            st.markdown(_html(f"""
+            <div class="mt-bar"><div style="width:{pct}%;"></div></div>
+            """), unsafe_allow_html=True)
+            for _, row in dr.sort_values(
+                by="order", key=lambda s: pd.to_numeric(s, errors="coerce")
+            ).iterrows():
+                doc_id_linha = row.get("_doc_id")
+                status = row.get("_status_visual", "⏳ Pendente")
+                rotulo = f"#{row.get('order','—')} · {row.get('title','—')} · {status}"
+                if st.button(rotulo, key=f"{key_prefix}_ent_{doc_id_linha}", use_container_width=True):
+                    clicado = doc_id_linha
+
+    return clicado
+
+
 def _aba_rastreio_ao_vivo(df_dia, data_consulta, user):
     if not _RASTREIO_LIVE_OK:
         st.error(
@@ -596,7 +643,7 @@ def _aba_rastreio_ao_vivo(df_dia, data_consulta, user):
                             }]
                             try:
                                 salvar_entregas_db(entrega_teste, data_consulta)
-                                st.success("✅ Entrega de teste criada! Selecione-a abaixo para ativar o rastreio.")
+                                st.success("✅ Entrega de teste criada!")
                                 time.sleep(_PAUSA_TOAST)
                                 st.rerun()
                             except Exception as e:
@@ -616,65 +663,77 @@ def _aba_rastreio_ao_vivo(df_dia, data_consulta, user):
         st.info("⏳ Nenhuma entrega com identificador disponível para rastrear ainda.")
         return
 
-    opcoes = {
-        f"#{row.get('order','—')} · {row.get('title','—')} · {nome_motorista(row.get('route',''))}": row.get("_doc_id")
-        for _, row in candidatas.iterrows()
-    }
-    escolha_label = st.selectbox("📦 Selecione a entrega para acompanhar", list(opcoes.keys()), key="sel_live_global")
-    ticket_id = opcoes[escolha_label]
-    linha = candidatas[candidatas["_doc_id"] == ticket_id].iloc[0]
+    # ── [NOVO] Layout em 2 colunas: motoristas à esquerda, mapa à direita ──
+    col_esq, col_dir = st.columns([1, 2])
 
-    config = obter_config_entrega_live_db(ticket_id)
-
-    if config:
-        renderizar_mapa_ao_vivo(ticket_id)
-
-        link_cliente = f"{URL_BASE_MOTOR_API}/rastreio/{ticket_id}"
-        st.caption("📍 Link EXCLUSIVO para o CLIENTE acompanhar esta entrega (sem login, mande por WhatsApp):")
-        st.code(link_cliente, language=None)
-
-        if pode_editar(user):
-            if st.button("🛑 Encerrar rastreio ao vivo desta entrega", key=f"desativar_live_{ticket_id}"):
-                desativar_rastreio_live_db(ticket_id)
-                st.success("Rastreio ao vivo encerrado.")
-                time.sleep(_PAUSA_TOAST)
-                st.rerun()
-        return
-
-    if not pode_editar(user):
-        st.info("Esta entrega ainda não tem rastreio ao vivo ativado. Peça ao admin para ativar.")
-        return
-
-    endereco = str(linha.get("address", "") or "")
-    telefone = str(linha.get("contact_phone", "") or "")
-    login_motorista_entrega = extrair_chave(linha.get("route", ""))
-    st.caption(f"Endereço da entrega: {endereco or '—'}")
-
-    usar_manual_key = f"live_manual_{ticket_id}"
-    if st.button("📍 Ativar rastreio ao vivo", key=f"ativar_live_{ticket_id}"):
-        lat, lng = geocodificar_endereco_db(endereco)
-        if lat is None:
-            st.session_state[usar_manual_key] = True
-        else:
-            iniciar_rastreio_live_db(ticket_id, lat, lng, telefone, login_motorista_entrega)
-            st.success("Rastreio ao vivo ativado! O link do cliente já aparece acima.")
-            time.sleep(_PAUSA_TOAST)
+    with col_esq:
+        st.markdown("#### 🧑‍✈️ Motoristas")
+        clicado = _painel_motoristas_ao_vivo(candidatas)
+        if clicado:
+            st.session_state["ao_vivo_ticket_sel"] = clicado
             st.rerun()
 
-    if st.session_state.get(usar_manual_key):
-        st.warning("Não consegui localizar esse endereço automaticamente. Informe lat/lng manualmente:")
-        mc1, mc2 = st.columns(2)
-        lat_manual = mc1.number_input("Latitude", format="%.6f", key=f"lat_manual_{ticket_id}")
-        lng_manual = mc2.number_input("Longitude", format="%.6f", key=f"lng_manual_{ticket_id}")
-        if st.button("Confirmar coordenadas e ativar", key=f"confirmar_manual_{ticket_id}"):
-            if lat_manual == 0 and lng_manual == 0:
-                st.warning("Informe coordenadas válidas antes de confirmar.")
+    ticket_id = st.session_state.get("ao_vivo_ticket_sel")
+
+    with col_dir:
+        if not ticket_id or ticket_id not in candidatas["_doc_id"].values:
+            st.info("👈 Clique em uma entrega, dentro do motorista, para ver o mapa aqui.")
+            return
+
+        linha = candidatas[candidatas["_doc_id"] == ticket_id].iloc[0]
+        st.markdown(f"#### 📦 #{linha.get('order','—')} · {linha.get('title','—')}")
+        st.caption(f"🧑‍✈️ {nome_motorista(linha.get('route',''))} · 📍 {linha.get('address','—')}")
+
+        config = obter_config_entrega_live_db(ticket_id)
+
+        if config:
+            renderizar_mapa_ao_vivo(ticket_id)
+
+            link_cliente = f"{URL_BASE_MOTOR_API}/rastreio/{ticket_id}"
+            st.caption("📍 Link EXCLUSIVO para o CLIENTE acompanhar esta entrega (sem login, mande por WhatsApp):")
+            st.code(link_cliente, language=None)
+
+            if pode_editar(user):
+                if st.button("🛑 Encerrar rastreio ao vivo desta entrega", key=f"desativar_live_{ticket_id}"):
+                    desativar_rastreio_live_db(ticket_id)
+                    st.success("Rastreio ao vivo encerrado.")
+                    time.sleep(_PAUSA_TOAST)
+                    st.rerun()
+            return
+
+        if not pode_editar(user):
+            st.info("Esta entrega ainda não tem rastreio ao vivo ativado. Peça ao admin para ativar.")
+            return
+
+        endereco = str(linha.get("address", "") or "")
+        telefone = str(linha.get("contact_phone", "") or "")
+        login_motorista_entrega = extrair_chave(linha.get("route", ""))
+
+        usar_manual_key = f"live_manual_{ticket_id}"
+        if st.button("📍 Ativar rastreio ao vivo", key=f"ativar_live_{ticket_id}"):
+            lat, lng = geocodificar_endereco_db(endereco)
+            if lat is None:
+                st.session_state[usar_manual_key] = True
             else:
-                iniciar_rastreio_live_db(ticket_id, lat_manual, lng_manual, telefone, login_motorista_entrega)
-                st.session_state.pop(usar_manual_key, None)
-                st.success("Rastreio ao vivo ativado com coordenadas manuais!")
+                iniciar_rastreio_live_db(ticket_id, lat, lng, telefone, login_motorista_entrega)
+                st.success("Rastreio ao vivo ativado! O link do cliente já aparece acima.")
                 time.sleep(_PAUSA_TOAST)
                 st.rerun()
+
+        if st.session_state.get(usar_manual_key):
+            st.warning("Não consegui localizar esse endereço automaticamente. Informe lat/lng manualmente:")
+            mc1, mc2 = st.columns(2)
+            lat_manual = mc1.number_input("Latitude", format="%.6f", key=f"lat_manual_{ticket_id}")
+            lng_manual = mc2.number_input("Longitude", format="%.6f", key=f"lng_manual_{ticket_id}")
+            if st.button("Confirmar coordenadas e ativar", key=f"confirmar_manual_{ticket_id}"):
+                if lat_manual == 0 and lng_manual == 0:
+                    st.warning("Informe coordenadas válidas antes de confirmar.")
+                else:
+                    iniciar_rastreio_live_db(ticket_id, lat_manual, lng_manual, telefone, login_motorista_entrega)
+                    st.session_state.pop(usar_manual_key, None)
+                    st.success("Rastreio ao vivo ativado com coordenadas manuais!")
+                    time.sleep(_PAUSA_TOAST)
+                    st.rerun()
 
 
 # ── VISÃO EXCLUSIVA DO MOTORISTA ─────────────────────────────────────
