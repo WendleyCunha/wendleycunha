@@ -524,6 +524,123 @@ def pagina_rastreio_cliente(ticket_id: str):
     return HTMLResponse(content=html)
 
 
+# ═══════════════════════════════════════════════════════════════════
+# [NOVO] PÁGINA DO MOTORISTA — compartilhar a localização
+#
+# GET /motorista/{ticket_id} — o motorista abre esse link no celular (o
+# botão "📍 Compartilhar minha localização" na tela dele, em
+# modulo/mod_rastreio.py, já monta esse link automaticamente). A página
+# pede permissão de GPS ao navegador e manda um ping em POST /gps/{ticket_id}
+# a cada ~8 segundos, enquanto a aba estiver aberta.
+#
+# Funciona em qualquer navegador de celular (Chrome, Safari) — não precisa
+# instalar nenhum app. Requer HTTPS (o Render já serve em HTTPS por
+# padrão) porque navegadores só liberam GPS em páginas seguras.
+# ═══════════════════════════════════════════════════════════════════
+
+_HTML_MOTORISTA_GPS_TEMPLATE = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compartilhar localização — Rastreio</title>
+<style>
+  body {
+    margin:0; font-family: Arial, sans-serif; background:#1a0f0a; color:#f5e6d3;
+    height:100vh; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; padding:24px; box-sizing:border-box;
+  }
+  #icone { font-size:64px; margin-bottom:16px; }
+  #status {
+    font-size:1.1rem; font-weight:700; margin-bottom:8px; line-height:1.4;
+  }
+  #detalhe { font-size:0.85rem; color:#c9a882; margin-bottom:24px; }
+  #botao {
+    background: linear-gradient(135deg, #C9A84C, #8a6200); color:#1a0f0a;
+    border:none; border-radius:10px; padding:14px 28px; font-size:1rem;
+    font-weight:700; cursor:pointer;
+  }
+  #botao:disabled { opacity:0.6; }
+  .ativo { color:#8be28b; }
+  .erro { color:#e57373; }
+</style>
+</head>
+<body>
+  <div id="icone">🚚</div>
+  <div id="status">Toque no botão para começar</div>
+  <div id="detalhe">Isso permite que o cliente acompanhe sua entrega em tempo real.</div>
+  <button id="botao" onclick="iniciar()">📍 Compartilhar minha localização</button>
+
+  <script>
+    const TICKET_ID = __TICKET_ID_JSON__;
+    let watchId = null;
+    let contadorEnvios = 0;
+
+    function atualizarTela(texto, classe) {
+      const el = document.getElementById('status');
+      el.innerText = texto;
+      el.className = classe || '';
+    }
+
+    async function enviarPosicao(lat, lng, velocidadeMs, precisao) {
+      try {
+        const velocidadeKmh = (velocidadeMs && velocidadeMs > 0) ? velocidadeMs * 3.6 : null;
+        await fetch('/gps/' + TICKET_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lat: lat, lng: lng,
+            velocidade_kmh: velocidadeKmh,
+            precisao_m: precisao,
+            atualizado_em: new Date().toISOString(),
+          }),
+        });
+        contadorEnvios++;
+        atualizarTela('✅ Compartilhando localização (' + contadorEnvios + ' envios)', 'ativo');
+      } catch (e) {
+        atualizarTela('⚠️ Sem conexão — tentando de novo...', 'erro');
+      }
+    }
+
+    function iniciar() {
+      if (!navigator.geolocation) {
+        atualizarTela('❌ Seu navegador não suporta GPS.', 'erro');
+        return;
+      }
+      document.getElementById('botao').disabled = true;
+      document.getElementById('botao').innerText = 'Compartilhando...';
+      atualizarTela('📡 Solicitando permissão de localização...');
+
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          enviarPosicao(
+            pos.coords.latitude, pos.coords.longitude,
+            pos.coords.speed, pos.coords.accuracy
+          );
+        },
+        (erro) => {
+          atualizarTela('❌ Permissão de GPS negada ou indisponível. Ative a localização e recarregue a página.', 'erro');
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      );
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    });
+  </script>
+</body>
+</html>"""
+
+
+@app.get("/motorista/{ticket_id}", response_class=HTMLResponse)
+def pagina_motorista_gps(ticket_id: str):
+    html = _HTML_MOTORISTA_GPS_TEMPLATE.replace(
+        "__TICKET_ID_JSON__", json.dumps(ticket_id)
+    )
+    return HTMLResponse(content=html)
+
+
 @app.get("/health")
 def health():
     return {"status": "online", "hora_brt": agora_brt()}
