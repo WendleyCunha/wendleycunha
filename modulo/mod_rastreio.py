@@ -758,6 +758,15 @@ def _visualizacao_motorista(user):
         </div>
         """), unsafe_allow_html=True)
 
+        # ── [NOVO] Compartilhar localização (rastreio ao vivo) ──────────
+        # Só aparece se o admin já ativou o rastreio ao vivo desta entrega
+        # específica (senão não há pra onde enviar o GPS). Abre a página
+        # pública GET /motorista/{ticket_id}, servida pelo motor_api.py,
+        # que pede permissão de GPS ao celular e começa a enviar sozinha.
+        if _RASTREIO_LIVE_OK and doc_id and obter_config_entrega_live_db(doc_id):
+            link_gps = f"{URL_BASE_MOTOR_API}/motorista/{doc_id}"
+            st.link_button("📍 Compartilhar minha localização", link_gps, use_container_width=True)
+
         if status == "⏳ Pendente":
             if not (_LOGISTICA_OK and doc_id):
                 st.caption("⚠️ Não é possível dar baixa nesta entrega agora.")
