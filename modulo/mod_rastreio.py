@@ -33,7 +33,8 @@ except Exception as _erro_import_logistica:
 # Exportar, Cadastros, baixa de entrega) continua 100% funcional.
 try:
     from database import (iniciar_rastreio_live_db, obter_config_entrega_live_db,
-                          geocodificar_endereco_db, desativar_rastreio_live_db)
+                          geocodificar_endereco_db, desativar_rastreio_live_db,
+                          verificar_gps_recente_motorista_db)
     from modulo.mod_rastreio_live import renderizar_mapa_ao_vivo
     _RASTREIO_LIVE_OK = True
     _erro_rastreio_live_msg = ""
@@ -693,7 +694,7 @@ def _visualizacao_motorista(user):
     # sistema. O que dá pra garantir é que isso seja o PRIMEIRO passo,
     # bem visível, logo após o login — não que ele seja pulado sem querer.
     if _RASTREIO_LIVE_OK:
-        pos_atual = obter_posicao_motorista_db(minha_chave)
+        pos_atual = verificar_gps_recente_motorista_db(minha_chave)
         gps_ativo = False
         if pos_atual and pos_atual.get("atualizado_em"):
             try:
