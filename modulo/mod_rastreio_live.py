@@ -5,20 +5,24 @@ Usa Leaflet + OpenStreetMap (grátis, sem chave de API), embutido via
 st.components.v1.html.
 
 Lê (nunca escreve) as coleções gravadas pelo motor_api.py:
-  /posicoes_motoristas/{ticket_id}       → posição atual do motorista
-  /entregas_rastreio_live/{ticket_id}    → destino + config da entrega
+  /posicoes_motoristas/{motorista_login} -> posição atual do motorista
+  /entregas_rastreio_live/{ticket_id}    -> destino + config da entrega
 
 Ponto de entrada usado por modulo/mod_rastreio.py: renderizar_mapa_ao_vivo(ticket_id)
 
-Atualização automática vem DESLIGADA por padrão (toggle) — evita gastar
-cota de leitura do Firestore continuamente enquanto ninguém está olhando.
+[ATUALIZADO] Atualização automática SEMPRE ligada -- sem toggle, sem botão
+manual de "atualizar posição". A cada _INTERVALO_AUTO_REFRESH segundos, o
+mapa se redesenha sozinho com a posição mais recente, o tempo todo que a
+tela estiver aberta. Isso consome cota do Firestore continuamente
+enquanto alguém estiver olhando esta tela -- é a troca consciente pedida
+(GPS "full time", sem passos manuais).
 """
 import streamlit as st
 import streamlit.components.v1 as components
 
 from database import obter_posicao_motorista_db, obter_config_entrega_live_db
 
-_INTERVALO_AUTO_REFRESH = 20  # segundos
+_INTERVALO_AUTO_REFRESH = 10  # segundos -- atualização contínua, sem botão
 
 _FRAGMENT_DECORATOR = getattr(st, "fragment", None) or getattr(st, "experimental_fragment", None)
 _TEM_FRAGMENT = _FRAGMENT_DECORATOR is not None
@@ -60,7 +64,7 @@ def _desenhar_mapa(ticket_id, posicao, config):
     col1.metric("🚚 Velocidade", f"{vel:.0f} km/h" if vel else "—")
     col2.metric("🎯 Precisão do GPS", f"{precisao:.0f} m" if precisao else "—")
     col3.metric("🚨 Alerta 5km", "✅ Já enviado" if config.get("alerta_5km_enviado") else "⏳ Ainda não")
-    st.caption(f"📡 Última atualização recebida: {posicao.get('atualizado_em', '—')}")
+    st.caption(f"📡 Atualizando automaticamente a cada {_INTERVALO_AUTO_REFRESH}s · última posição: {posicao.get('atualizado_em', '—')}")
 
 
 def _renderizar_conteudo(ticket_id: str):
@@ -69,7 +73,11 @@ def _renderizar_conteudo(ticket_id: str):
         st.info("Rastreio ao vivo ainda não foi ativado para esta entrega.")
         return
 
-    posicao = obter_posicao_motorista_db(ticket_id)
+    # A posição é gravada por MOTORISTA (login), não por ticket_id de uma
+    # entrega -- resolve o login vinculado a esta entrega (gravado quando o
+    # rastreio foi ativado) e busca a posição dele.
+    motorista_login = config.get("motorista_login", "")
+    posicao = obter_posicao_motorista_db(motorista_login) if motorista_login else None
     if not posicao:
         st.info(
             "⏳ Aguardando o motorista iniciar o compartilhamento de localização "
@@ -80,29 +88,19 @@ def _renderizar_conteudo(ticket_id: str):
     _desenhar_mapa(ticket_id, posicao, config)
 
 
-def _renderizar_conteudo_auto(ticket_id: str):
-    _renderizar_conteudo(ticket_id)
-
-
 def renderizar_mapa_ao_vivo(ticket_id: str):
-    chave_toggle = f"live_auto_{ticket_id}"
-    auto_ligado = st.toggle(
-        f"🔄 Atualização automática a cada {_INTERVALO_AUTO_REFRESH}s "
-        "(consome cota do Firestore continuamente — desligue quando não precisar)",
-        value=st.session_state.get(chave_toggle, False),
-        key=chave_toggle,
-    )
-
-    if auto_ligado and _TEM_FRAGMENT:
-        _FRAGMENT_DECORATOR(run_every=_INTERVALO_AUTO_REFRESH)(_renderizar_conteudo_auto)(ticket_id)
-        return
-
-    if auto_ligado and not _TEM_FRAGMENT:
-        st.caption(
-            "⚠️ Sua versão do Streamlit não suporta `st.fragment`. "
-            "Atualize `streamlit>=1.35.0` no requirements.txt, ou use o botão manual abaixo."
+    """
+    [ATUALIZADO] Sem toggle, sem botão -- atualiza sozinho o tempo todo,
+    via st.fragment, enquanto esta tela estiver aberta. Se a versão do
+    Streamlit não suportar st.fragment (< 1.35.0), cai para uma única
+    renderização estática com um aviso pra atualizar a versão.
+    """
+    if _TEM_FRAGMENT:
+        _FRAGMENT_DECORATOR(run_every=_INTERVALO_AUTO_REFRESH)(_renderizar_conteudo)(ticket_id)
+    else:
+        st.warning(
+            "⚠️ Sua versão do Streamlit não suporta atualização automática "
+            "(`st.fragment`). Atualize `streamlit>=1.35.0` no requirements.txt "
+            "para a atualização contínua funcionar."
         )
-
-    _renderizar_conteudo(ticket_id)
-    if st.button("🔄 Atualizar posição agora", key=f"refresh_live_{ticket_id}"):
-        st.rerun()
+        _renderizar_conteudo(ticket_id)
