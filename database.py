@@ -10,8 +10,17 @@ def get_db():
     if "db" not in st.session_state:
         key_dict = json.loads(st.secrets["textkey"])
         creds    = service_account.Credentials.from_service_account_info(key_dict)
+        # [AJUSTE] Removido `database="portal"` — esse parâmetro exige um
+        # banco Firestore NOMEADO "portal" dentro do projeto (algo que
+        # precisa ser criado manualmente no Console, além do banco padrão
+        # que já vem pronto quando você ativa o Firestore pela primeira
+        # vez). Sem ele, o client usa o banco "(default)" automaticamente
+        # — que é o que qualquer projeto novo já tem assim que você ativa
+        # o Firestore, sem passo extra nenhum. Isso é o que resolve o
+        # erro `NotFound` ao trocar de projeto (o projeto novo não tinha
+        # nenhum banco chamado "portal" criado).
         st.session_state.db = firestore.Client(
-            credentials=creds, project=creds.project_id, database="bancowendley"
+            credentials=creds, project=creds.project_id
         )
     return st.session_state.db
 
