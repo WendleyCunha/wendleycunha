@@ -257,11 +257,19 @@ def geocodificar_endereco_db(endereco: str):
 
 
 def iniciar_rastreio_live_db(ticket_id: str, destino_lat: float, destino_lng: float,
-                              cliente_telefone: str = ""):
+                              cliente_telefone: str = "", motorista_login: str = ""):
+    """
+    [ATUALIZADO] Agora grava também `motorista_login` na config da entrega.
+    Isso é o que permite que a posição seja rastreada POR MOTORISTA (um
+    único compartilhamento de GPS por login, válido para todas as
+    entregas dele no dia) em vez de por entrega individual — o motorista
+    libera o GPS UMA VEZ ao logar, não a cada entrega.
+    """
     get_db().collection("entregas_rastreio_live").document(ticket_id).set({
         "destino_lat": destino_lat,
         "destino_lng": destino_lng,
         "cliente_telefone": cliente_telefone,
+        "motorista_login": motorista_login,
         "alerta_5km_enviado": False,
         "ativado_em": datetime.now(BRT).isoformat(),
     })
@@ -277,11 +285,22 @@ def obter_config_entrega_live_db(ticket_id: str):
     return doc.to_dict() if doc.exists else None
 
 
-def obter_posicao_motorista_db(ticket_id: str):
-    """Última posição do motorista, ou None. SEM cache de propósito — a
-    posição muda a cada poucos segundos; quem chama (mod_rastreio_live.py)
-    já controla a frequência de leitura via toggle + intervalo mínimo."""
-    doc = get_db().collection("posicoes_motoristas").document(ticket_id).get()
+def obter_posicao_motorista_db(identificador: str):
+    """
+    Retorna a última posição conhecida de um motorista, ou None se ele
+    ainda não começou a compartilhar localização.
+
+    [ATUALIZADO] `identificador` agora é o LOGIN do motorista (não mais o
+    ticket_id de uma entrega) — o compartilhamento de GPS passou a ser
+    por motorista (uma vez por sessão de trabalho), não por entrega
+    individual. Quem precisar da posição associada a uma entrega
+    específica deve primeiro pegar o `motorista_login` gravado na config
+    dela (`obter_config_entrega_live_db(ticket_id)["motorista_login"]`) e
+    então chamar esta função com esse login.
+
+    SEM cache de propósito: a posição muda a cada poucos segundos.
+    """
+    doc = get_db().collection("posicoes_motoristas").document(identificador).get()
     return doc.to_dict() if doc.exists else None
 
 
@@ -293,8 +312,15 @@ def marcar_alerta_5km_enviado_db(ticket_id: str):
 
 
 def desativar_rastreio_live_db(ticket_id: str):
-    """Chame quando a entrega for concluída, pra não deixar o mapa ao vivo
-    'aberto' indefinidamente numa entrega já finalizada."""
+    """
+    Chame quando a entrega for concluída, pra não deixar o mapa ao vivo
+    'aberto' indefinidamente numa entrega já finalizada.
+
+    [ATUALIZADO] Apaga só a config da entrega (/entregas_rastreio_live).
+    NÃO apaga mais a posição do motorista (/posicoes_motoristas) — ela
+    agora é por MOTORISTA, não por entrega, e ele pode ter outras entregas
+    ativas no mesmo dia. Encerrar UMA entrega não deve interromper o
+    rastreamento das demais.
+    """
     get_db().collection("entregas_rastreio_live").document(ticket_id).delete()
-    get_db().collection("posicoes_motoristas").document(ticket_id).delete()
     obter_config_entrega_live_db.clear()
