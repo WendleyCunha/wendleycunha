@@ -47,7 +47,7 @@ BRT = timezone(timedelta(hours=-3))
 # serviço (Dashboard do Render → aparece no topo, ex:
 # https://bancowendley-motor.onrender.com). É onde vive a página pública
 # do CLIENTE (GET /rastreio/{ticket_id}, sem login) e o recebimento de GPS.
-URL_BASE_MOTOR_API = "https://SEU-SERVICO.onrender.com"
+URL_BASE_MOTOR_API = "https://bancowendley.onrender.com"
 
 # st.dialog disponível? (popup nativo). Senão, cai no st.popover.
 _HAS_DIALOG = bool(getattr(st, "dialog", None) or getattr(st, "experimental_dialog", None))
