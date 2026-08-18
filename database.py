@@ -138,7 +138,7 @@ def alterar_senha_usuario(usuario: str, senha_atual: str, nova_senha: str):
     return True, "Senha alterada com sucesso! Faça login novamente."
 
 
-@st.cache_data(ttl=15, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def listar_usuarios():
     return [d.to_dict() for d in get_db().collection("usuarios").stream()]
 
@@ -154,13 +154,13 @@ def deletar_usuario(usuario):
 # upload recém-feitos — e de qualquer forma salvar_entregas_db/
 # dar_baixa_entrega_db chamam .clear() nessas duas funções assim que algo
 # muda, então a atualização aparece na hora mesmo com o cache ativo.
-@st.cache_data(ttl=8, show_spinner=False)
+@st.cache_data(ttl=15, show_spinner=False)
 def obter_tickets_db(data_alvo: str) -> list:
     docs = get_db().collection("entregas").where("data_entrega", "==", data_alvo).stream()
     return [d.to_dict().get("payload", d.to_dict()) for d in docs]
 
 
-@st.cache_data(ttl=8, show_spinner=False)
+@st.cache_data(ttl=15, show_spinner=False)
 def obter_tickets_com_id_db(data_alvo: str) -> list:
     """Igual a obter_tickets_db, mas cada item vem com '_doc_id' — necessário
     pro motorista dar baixa numa entrega específica e pro Rastreio ao Vivo
@@ -188,7 +188,7 @@ def obter_datas_disponiveis_db() -> list:
 # ── De-Para motoristas (nome de exibição por placa/rota) ───────────
 # Cacheado (30s): sem cache, cada linha da tabela do Dashboard fazia 1
 # leitura nova no Firestore em todo rerun.
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def obter_vinculo_db(chave: str) -> str:
     doc = get_db().collection("de_para_motoristas").document(chave).get()
     return doc.to_dict().get("nome_motorista", chave) if doc.exists else chave
@@ -290,15 +290,36 @@ def obter_posicao_motorista_db(identificador: str):
     Retorna a última posição conhecida de um motorista, ou None se ele
     ainda não começou a compartilhar localização.
 
-    [ATUALIZADO] `identificador` agora é o LOGIN do motorista (não mais o
-    ticket_id de uma entrega) — o compartilhamento de GPS passou a ser
-    por motorista (uma vez por sessão de trabalho), não por entrega
-    individual. Quem precisar da posição associada a uma entrega
-    específica deve primeiro pegar o `motorista_login` gravado na config
-    dela (`obter_config_entrega_live_db(ticket_id)["motorista_login"]`) e
-    então chamar esta função com esse login.
+    `identificador` é o LOGIN do motorista (não o ticket_id de uma
+    entrega) — o compartilhamento de GPS é por motorista (uma vez por
+    sessão de trabalho), não por entrega individual. Quem precisar da
+    posição associada a uma entrega específica deve primeiro pegar o
+    `motorista_login` gravado na config dela
+    (`obter_config_entrega_live_db(ticket_id)["motorista_login"]`) e então
+    chamar esta função com esse login.
 
-    SEM cache de propósito: a posição muda a cada poucos segundos.
+    SEM cache de propósito: usada pelo MAPA AO VIVO do admin
+    (modulo/mod_rastreio_live.py), que precisa da posição mais recente
+    possível. Para checagens que não precisam ser em tempo real (ex: "o
+    motorista já está compartilhando?"), use
+    `verificar_gps_recente_motorista_db` abaixo, que tem cache leve.
+    """
+    doc = get_db().collection("posicoes_motoristas").document(identificador).get()
+    return doc.to_dict() if doc.exists else None
+
+
+@st.cache_data(ttl=10, show_spinner=False)
+def verificar_gps_recente_motorista_db(identificador: str):
+    """
+    [NOVO — economia de cota] Igual a `obter_posicao_motorista_db`, mas
+    com cache leve de 10s. Usada pelo aviso obrigatório de compartilhamento
+    de GPS na tela do motorista (mod_rastreio.py) — essa checagem só
+    precisa saber "já tem um ping recente ou não?", não o valor
+    exatíssimo do segundo atual, então não faz sentido ler o Firestore sem
+    cache a cada rerun da tela (que pode acontecer várias vezes por
+    minuto). O mapa ao vivo do admin continua usando a versão SEM cache
+    (obter_posicao_motorista_db), pra manter a precisão em tempo real de
+    quem está de fato acompanhando a entrega.
     """
     doc = get_db().collection("posicoes_motoristas").document(identificador).get()
     return doc.to_dict() if doc.exists else None
