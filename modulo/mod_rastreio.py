@@ -686,54 +686,57 @@ def _aba_rastreio_ao_vivo(df_dia, data_consulta, user):
 
         config = obter_config_entrega_live_db(ticket_id)
 
-        if config:
-            renderizar_mapa_ao_vivo(ticket_id)
+        # ── [NOVO] Ativação automática ao clicar — sem botão intermediário ──
+        # Se ainda não existe config de rastreio ao vivo pra esta entrega,
+        # geocodifica o endereço e cria a config NA HORA, silenciosamente.
+        # O único caso em que aparece algo pra preencher é se a
+        # geocodificação automática falhar (endereço incompleto/não
+        # encontrado) — aí sim é necessário informar lat/lng manualmente,
+        # porque não tem como adivinhar isso sozinho.
+        if not config and pode_editar(user):
+            endereco = str(linha.get("address", "") or "")
+            telefone = str(linha.get("contact_phone", "") or "")
+            login_motorista_entrega = extrair_chave(linha.get("route", ""))
 
-            link_cliente = f"{URL_BASE_MOTOR_API}/rastreio/{ticket_id}"
-            st.caption("📍 Link EXCLUSIVO para o CLIENTE acompanhar esta entrega (sem login, mande por WhatsApp):")
-            st.code(link_cliente, language=None)
+            with st.spinner("📍 Localizando endereço e ativando rastreio ao vivo..."):
+                lat, lng = geocodificar_endereco_db(endereco)
 
-            if pode_editar(user):
-                if st.button("🛑 Encerrar rastreio ao vivo desta entrega", key=f"desativar_live_{ticket_id}"):
-                    desativar_rastreio_live_db(ticket_id)
-                    st.success("Rastreio ao vivo encerrado.")
-                    time.sleep(_PAUSA_TOAST)
-                    st.rerun()
-            return
-
-        if not pode_editar(user):
-            st.info("Esta entrega ainda não tem rastreio ao vivo ativado. Peça ao admin para ativar.")
-            return
-
-        endereco = str(linha.get("address", "") or "")
-        telefone = str(linha.get("contact_phone", "") or "")
-        login_motorista_entrega = extrair_chave(linha.get("route", ""))
-
-        usar_manual_key = f"live_manual_{ticket_id}"
-        if st.button("📍 Ativar rastreio ao vivo", key=f"ativar_live_{ticket_id}"):
-            lat, lng = geocodificar_endereco_db(endereco)
-            if lat is None:
-                st.session_state[usar_manual_key] = True
-            else:
+            if lat is not None:
                 iniciar_rastreio_live_db(ticket_id, lat, lng, telefone, login_motorista_entrega)
-                st.success("Rastreio ao vivo ativado! O link do cliente já aparece acima.")
+                st.rerun()  # recarrega já com a config criada, direto pro mapa
+            else:
+                st.warning(
+                    "⚠️ Não consegui localizar esse endereço automaticamente "
+                    f"(\"{endereco or '—'}\"). Informe a latitude/longitude manualmente:"
+                )
+                mc1, mc2 = st.columns(2)
+                lat_manual = mc1.number_input("Latitude", format="%.6f", key=f"lat_manual_{ticket_id}")
+                lng_manual = mc2.number_input("Longitude", format="%.6f", key=f"lng_manual_{ticket_id}")
+                if st.button("Confirmar coordenadas", key=f"confirmar_manual_{ticket_id}", type="primary"):
+                    if lat_manual == 0 and lng_manual == 0:
+                        st.warning("Informe coordenadas válidas antes de confirmar.")
+                    else:
+                        iniciar_rastreio_live_db(ticket_id, lat_manual, lng_manual, telefone, login_motorista_entrega)
+                        st.rerun()
+            return
+
+        if not config:
+            st.info("Esta entrega ainda não tem rastreio ao vivo ativado. Peça ao admin para acessá-la.")
+            return
+
+        # ── Config já existe — mostra o mapa, que se atualiza sozinho ──
+        renderizar_mapa_ao_vivo(ticket_id)
+
+        link_cliente = f"{URL_BASE_MOTOR_API}/rastreio/{ticket_id}"
+        st.caption("📍 Link EXCLUSIVO para o CLIENTE acompanhar esta entrega (sem login, mande por WhatsApp):")
+        st.code(link_cliente, language=None)
+
+        if pode_editar(user):
+            if st.button("🛑 Encerrar rastreio ao vivo desta entrega", key=f"desativar_live_{ticket_id}"):
+                desativar_rastreio_live_db(ticket_id)
+                st.success("Rastreio ao vivo encerrado.")
                 time.sleep(_PAUSA_TOAST)
                 st.rerun()
-
-        if st.session_state.get(usar_manual_key):
-            st.warning("Não consegui localizar esse endereço automaticamente. Informe lat/lng manualmente:")
-            mc1, mc2 = st.columns(2)
-            lat_manual = mc1.number_input("Latitude", format="%.6f", key=f"lat_manual_{ticket_id}")
-            lng_manual = mc2.number_input("Longitude", format="%.6f", key=f"lng_manual_{ticket_id}")
-            if st.button("Confirmar coordenadas e ativar", key=f"confirmar_manual_{ticket_id}"):
-                if lat_manual == 0 and lng_manual == 0:
-                    st.warning("Informe coordenadas válidas antes de confirmar.")
-                else:
-                    iniciar_rastreio_live_db(ticket_id, lat_manual, lng_manual, telefone, login_motorista_entrega)
-                    st.session_state.pop(usar_manual_key, None)
-                    st.success("Rastreio ao vivo ativado com coordenadas manuais!")
-                    time.sleep(_PAUSA_TOAST)
-                    st.rerun()
 
 
 # ── VISÃO EXCLUSIVA DO MOTORISTA ─────────────────────────────────────
