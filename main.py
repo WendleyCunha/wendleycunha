@@ -1,420 +1,883 @@
 import streamlit as st
-import configuracao as config
-from modulos import database as db
-from views import home, login
-from datetime import datetime
-from pwa_inject import injetar_pwa
+import pandas as pd
+from datetime import datetime, timedelta, timezone
+import os, time, base64
 
+from database import (
+    verificar_login, criar_usuario, listar_usuarios, deletar_usuario,
+    atualizar_modulos_usuario, alterar_senha_usuario,
+    obter_tickets_db, obter_datas_disponiveis_db,
+    modulos_do_usuario, tem_permissao, pode_exportar, pode_deletar,
+    MODULOS_PADRAO,
+    # ── novas funções ──
+    listar_departamentos, criar_departamento, deletar_departamento,
+    atualizar_departamento_usuario, redefinir_senha_usuario,
+    atualizar_perfil_usuario, renomear_login_usuario,
+)
 
-# --- 1. CARREGAR USUÁRIOS (Sem o cache que retém dados antigos) ---
-def obter_usuarios_cache():
+# [CORREÇÃO — ponto único de falha] Antes, este import não tinha proteção
+# nenhuma: `from modulo.mod_rastreio import renderizar_rastreio` direto,
+# diferente de TODOS os outros módulos abaixo (Home, Tickets, Cartas, Chat,
+# Diagnóstico), que já usam try/except com uma função de fallback. Como o
+# Rastreio é o módulo mais complexo do sistema (importa database_logistica,
+# mod_rastreio_live, e dentro dele ainda importa mod_chat), qualquer
+# problema em QUALQUER ponto dessa cadeia derrubava o `main.py` inteiro na
+# hora do import — inclusive a TELA DE LOGIN, antes de qualquer usuário
+# conseguir entrar. Agora segue o mesmo padrão de proteção dos demais.
+try:
+    from modulo.mod_rastreio import renderizar_rastreio
+except Exception as _erro_import_rastreio:
+    def renderizar_rastreio(papel, user=None, datas_db=None, pode_exp=False,
+                             _erro=_erro_import_rastreio):
+        st.error("⚠️ Falha ao carregar o módulo de Rastreio. Detalhe técnico abaixo:")
+        st.exception(_erro)
+        return False
+
+try:
+    from modulo.mod_home import renderizar_home
+except Exception as _erro_import_home:
+    def renderizar_home(papel, user=None, _erro=_erro_import_home):
+        st.error("⚠️ Falha ao carregar o módulo Meu Dia. Detalhe técnico abaixo:")
+        st.exception(_erro)
+
+try:
+    from modulo.mod_tickets import renderizar_tickets
+except Exception as _erro_import_tickets:
+    def renderizar_tickets(papel, user=None, _erro=_erro_import_tickets):
+        st.error("⚠️ Falha ao carregar o módulo de Tickets. Detalhe técnico abaixo:")
+        st.exception(_erro)
+
+try:
+    from modulo.mod_cartas import renderizar_cartas
+except Exception as _erro_import_cartas:
+    def renderizar_cartas(papel, user=None, _erro=_erro_import_cartas):
+        st.error("⚠️ Falha ao carregar o módulo de Cartas. Detalhe técnico abaixo:")
+        st.exception(_erro)
+
+try:
+    from modulo.mod_chat import renderizar_chat
+except Exception as _erro_import_chat:
+    def renderizar_chat(papel, user=None, _erro=_erro_import_chat):
+        st.error("⚠️ Falha ao carregar o módulo de Chat. Detalhe técnico abaixo:")
+        st.exception(_erro)
+
+try:
+    from modulo.mod_diagnostico import renderizar_diagnostico
+except Exception as _erro_import_diagnostico:
+    def renderizar_diagnostico(papel, user=None, _erro=_erro_import_diagnostico):
+        st.error("⚠️ Falha ao carregar o módulo de Diagnóstico N2. Detalhe técnico abaixo:")
+        st.exception(_erro)
+
+try:
+    from database_chat import listar_conversas_com_nao_lidas
+except Exception:
+    def listar_conversas_com_nao_lidas(_lista):
+        return []
+
+# [NOVO — blindagem de runtime] Diferente da proteção de IMPORT lá em cima
+# (que só cobre "o arquivo do módulo carregou certo?"), esta função protege
+# a EXECUÇÃO de cada módulo. Um erro que só acontece quando o módulo roda de
+# verdade — Firestore fora do ar, cota estourada (ResourceExhausted), índice
+# faltando, etc. — antes derrubava a página inteira, mesmo com o import
+# protegido. Agora cada chamada de módulo no roteamento passa por aqui: se
+# der erro, mostra um aviso amigável SÓ naquela tela, e o resto do sistema
+# (sidebar, outros módulos) continua clicável normalmente.
+from google.api_core.exceptions import ResourceExhausted as _ResourceExhausted
+
+def _executar_modulo_protegido(nome_modulo: str, func, *args, **kwargs):
+    """Roda `func(*args, **kwargs)` protegido — devolve o valor de retorno
+    de `func` em caso de sucesso, ou None se der erro (depois de já ter
+    mostrado o aviso na tela)."""
     try:
-        # Chama a função diretamente sem o decorator de cache
-        return db.carregar_usuarios_firebase()
+        return func(*args, **kwargs)
+    except _ResourceExhausted:
+        st.error(
+            f"🚫 **{nome_modulo}** não pôde carregar agora: a cota diária gratuita "
+            "de leituras do Firestore foi esgotada (limite do plano Spark, não é "
+            "um bug do sistema)."
+        )
+        st.info(
+            "**Como resolver:** espere o reset automático da cota (meia-noite "
+            "horário do Pacífico, ≈ 4h-5h da manhã em Brasília), ou migre o "
+            "projeto no Firebase para o plano **Blaze** "
+            "(console.firebase.google.com → ⚙️ → Uso e faturamento → Modificar "
+            "plano) — as primeiras 50k leituras/dia continuam grátis, o erro "
+            "some assim que o plano muda. Os outros itens da sidebar continuam "
+            "funcionando normalmente até lá, se não precisarem ler o Firestore "
+            "agora."
+        )
+        return None
     except Exception as e:
-        st.error(f"Erro ao conectar com o banco de dados: {e}")
-        return {}
+        st.error(f"⚠️ **{nome_modulo}** encontrou um erro e não pôde carregar agora.")
+        st.exception(e)
+        return None
 
-# --- 2. CONFIGURAÇÃO INICIAL ---
-config.configurar_pagina()
-injetar_pwa()
+st.set_page_config(
+    page_title="KingStar · Painel Integrado",
+    layout="wide", page_icon="🚚",
+    initial_sidebar_state="expanded"
+)
 
-# ══════════════════════════════════════════════════════════════════
-#  CSS GLOBAL — Identidade Visual Azul Marinho + Dourado
-# ══════════════════════════════════════════════════════════════════
+BRT = timezone(timedelta(hours=-3))
+def agora_brt(): return datetime.now(BRT).strftime("%H:%M:%S")
+
+def get_logo():
+    if os.path.exists("logo.png"):
+        with open("logo.png","rb") as f: return base64.b64encode(f.read()).decode()
+    return None
+
+def _total_chat_pendentes():
+    """
+    Soma as mensagens não lidas de motoristas em todas as conversas (visão ADM).
+    OTIMIZADO: listar_conversas_com_nao_lidas agora lê 1 doc-resumo pequeno
+    por motorista (não mais até 1000 mensagens por motorista) — ver
+    database_chat.py. Ainda assim, cacheia por alguns segundos porque essa
+    função roda no sidebar, ou seja, em TODO rerun de QUALQUER página.
+    """
+    try:
+        motoristas_ids = tuple(
+            u["usuario"] for u in listar_usuarios() if u.get("role") == "motorista"
+        )
+        return _total_chat_pendentes_cache(motoristas_ids)
+    except Exception:
+        return 0
+
+@st.cache_data(ttl=5, show_spinner=False)
+def _total_chat_pendentes_cache(motoristas_ids: tuple) -> int:
+    return sum(c["nao_lidas"] for c in listar_conversas_com_nao_lidas(list(motoristas_ids)))
+
+# ── CSS ───────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+.stApp { background-color: #f4f6f9; }
+.block-container { padding-top: 4rem !important; }
 
-/* ── Reset e Base ─────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
-
-html, body, [data-testid="stAppViewContainer"] {
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
-    background: #f0f4f8 !important;
+section[data-testid="stSidebar"] {
+    background-color: #ffffff !important;
+    border-right: 1px solid #dbe2e9 !important;
 }
-
-/* ── Sidebar ──────────────────────────────────────────── */
-[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0a1628 0%, #0d2145 40%, #102a57 100%) !important;
-    border-right: 1px solid rgba(255,215,0,0.15) !important;
-    min-width: 260px !important;
+section[data-testid="stSidebar"] .stButton > button {
+    border: 1px solid #e2e8f0 !important;
+    background: #f8f9fa !important;
+    color: #2c3e50 !important;
+    font-size: 0.88rem !important;
+    border-radius: 8px !important;
+    margin-bottom: 4px !important;
+    padding: 9px 14px !important;
+    width: 100% !important;
+    text-align: left !important;
+    font-weight: 500 !important;
 }
-[data-testid="stSidebar"] > div:first-child,
-[data-testid="stSidebar"] [data-testid="stVerticalBlock"],
-[data-testid="stSidebarNav"] {
+section[data-testid="stSidebar"] .stButton > button:hover {
+    background: #f0f2f5 !important; border-color: #C9A84C !important;
+}
+section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    background: rgba(201,168,76,0.1) !important;
+    border-color: #C9A84C !important;
+    color: #7a5f1a !important; font-weight: 700 !important;
+}
+.nav-section { font-size:0.68rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:1.5px; color:#9aabb8; padding:14px 4px 6px; display:block; }
+
+/* ── Grupo "Sistema" — sub-navegação com barra lateral, visual mais
+   discreto que o item "Meu Dia" (Operacional) e diferente do botão
+   "Configurações" (Administração), pra manter a hierarquia clara. ── */
+section[data-testid="stSidebar"] .st-key-sistema_nav .stButton > button {
     background: transparent !important;
+    border: none !important;
+    border-left: 3px solid #e2e8f0 !important;
+    border-radius: 0 8px 8px 0 !important;
+    color: #45566b !important;
+    font-weight: 500 !important;
+    padding-left: 16px !important;
+    margin-bottom: 2px !important;
 }
-
-/* Textos da sidebar */
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span,
-[data-testid="stSidebar"] label,
-[data-testid="stSidebar"] .stMarkdown {
-    color: #c8d8f0 !important;
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
+section[data-testid="stSidebar"] .st-key-sistema_nav .stButton > button:hover {
+    background: #f4f6f9 !important;
+    border-left-color: #C9A84C !important;
+    color: #2c3e50 !important;
 }
-[data-testid="stSidebar"] svg { fill: #FFD700 !important; }
-
-/* Itens de navegação */
-[data-testid="stSidebarNavItems"] a {
-    background: rgba(255,255,255,0.04) !important;
-    border-radius: 10px !important;
-    margin: 3px 8px !important;
-    border: 1px solid rgba(255,215,0,0.08) !important;
-    transition: all 0.25s ease !important;
-    padding: 10px 14px !important;
-}
-[data-testid="stSidebarNavItems"] a:hover {
-    background: rgba(255,215,0,0.1) !important;
-    border-color: rgba(255,215,0,0.3) !important;
-}
-[data-testid="stSidebarNavItems"] a[aria-current="page"] {
-    background: linear-gradient(135deg, rgba(255,215,0,0.2), rgba(255,165,0,0.15)) !important;
-    border: 1px solid #FFD700 !important;
+section[data-testid="stSidebar"] .st-key-sistema_nav .stButton > button[kind="primary"] {
+    background: rgba(201,168,76,0.10) !important;
+    border-left: 3px solid #C9A84C !important;
+    color: #7a5f1a !important;
     font-weight: 700 !important;
 }
 
-/* ── Header transparente ──────────────────────────────── */
-header[data-testid="stHeader"] {
-    background: transparent !important;
-    border-bottom: none !important;
-}
-
-/* ── Área principal ───────────────────────────────────── */
-[data-testid="stMain"] {
-    background: #f0f4f8 !important;
-}
-.block-container {
-    padding: 1.5rem 2rem 2rem 2rem !important;
-    max-width: 1400px !important;
-}
-
-/* ── Títulos e headings ───────────────────────────────── */
-h1 { 
-    font-size: 1.75rem !important; 
-    font-weight: 800 !important; 
-    color: #0a1628 !important;
-    letter-spacing: -0.02em !important;
-}
-h2, h3 { 
-    font-weight: 700 !important; 
-    color: #0d2145 !important;
-    letter-spacing: -0.01em !important;
-}
-
-/* ── Abas (Tabs) ──────────────────────────────────────── */
-[data-testid="stTabs"] [data-baseweb="tab-list"] {
+/* ── Botão "Configurações" (Administração) — estilo outline/discreto,
+   deliberadamente diferente de Operacional e de Sistema. ── */
+section[data-testid="stSidebar"] .st-key-config_nav .stButton > button {
     background: #ffffff !important;
-    border-radius: 12px !important;
-    padding: 6px !important;
-    gap: 4px !important;
-    border: 1px solid #e2e8f0 !important;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
-}
-[data-testid="stTabs"] [data-baseweb="tab"] {
-    border-radius: 9px !important;
-    padding: 8px 18px !important;
+    border: 1px dashed #c7d0d9 !important;
+    border-radius: 8px !important;
+    color: #64778d !important;
     font-weight: 600 !important;
-    font-size: 0.83rem !important;
-    color: #64748b !important;
-    background: transparent !important;
-    border: none !important;
-    transition: all 0.2s ease !important;
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
 }
-[data-testid="stTabs"] [data-baseweb="tab"]:hover {
-    background: #f1f5f9 !important;
-    color: #0d2145 !important;
+section[data-testid="stSidebar"] .st-key-config_nav .stButton > button:hover {
+    border-color: #95a5a6 !important;
+    color: #2c3e50 !important;
 }
-[data-testid="stTabs"] [aria-selected="true"] {
-    background: linear-gradient(135deg, #0d2145, #1a3a6e) !important;
-    color: #FFD700 !important;
-    box-shadow: 0 2px 8px rgba(13,33,69,0.3) !important;
+section[data-testid="stSidebar"] .st-key-config_nav .stButton > button[kind="primary"] {
+    background: #eef1f4 !important;
+    border: 1px solid #95a5a6 !important;
+    color: #2c3e50 !important;
 }
-[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
-    display: none !important;
+.ks-header {
+    background:#ffffff; border-left:5px solid #C9A84C;
+    border-radius:12px; padding:16px 24px; margin-bottom:20px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.05);
+    display:flex; align-items:center; gap:18px;
 }
-[data-testid="stTabs"] [data-baseweb="tab-border"] {
-    display: none !important;
+/* Cabeçalho FIXO ao rolar a página */
+div[data-testid="stHorizontalBlock"]:has(.ks-header) {
+    position: sticky; top: 0; z-index: 999;
+    background: #f4f6f9; padding-top: 6px; padding-bottom: 6px;
 }
+.ks-title { font-size:1.4rem; font-weight:800; color:#2c3e50; margin:0; }
+.ks-sub { font-size:0.8rem; color:#64778d; margin-top:3px; }
+.ks-pill { display:inline-block; padding:3px 10px; border-radius:10px;
+    font-size:0.72rem; font-weight:700; margin-right:3px;
+    background:rgba(52,152,219,.1); color:#2471a3; }
+.ks-nivel { display:inline-block; padding:3px 10px; border-radius:10px;
+    font-size:0.72rem; font-weight:700;
+    background:rgba(201,168,76,.15); color:#7a5f1a; }
+.kpi-card { background:#fff; border-radius:12px; padding:18px 12px;
+    text-align:center; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
+.kpi-card.gold  { border-top:4px solid #C9A84C; }
+.kpi-card.green { border-top:4px solid #27ae60; }
+.kpi-card.blue  { border-top:4px solid #2980b9; }
+.kpi-card.red   { border-top:4px solid #e74c3c; }
+.kpi-card.gray  { border-top:4px solid #95a5a6; }
+.kpi-label { color:#64778d; font-size:0.72rem; font-weight:700;
+    text-transform:uppercase; letter-spacing:1px; }
+.kpi-value { font-size:2rem; font-weight:800; color:#2c3e50; line-height:1.2; margin:4px 0 2px; }
+.kpi-sub { font-size:0.78rem; font-weight:600; color:#C9A84C; }
+.kpi-card.green .kpi-value { color:#27ae60; }
+.kpi-card.blue  .kpi-value { color:#2980b9; }
+.kpi-card.red   .kpi-value { color:#e74c3c; }
+.driver-card { background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+    padding:14px; margin-bottom:6px; border-top:4px solid #C9A84C; }
+.tag { display:inline-block; padding:3px 9px; border-radius:10px;
+    font-size:0.73rem; font-weight:700; margin:2px; }
+.tg { background:rgba(201,168,76,.12); color:#7a5f1a; }
+.tn { background:rgba(46,204,113,.1);  color:#1e8449; }
+.tb { background:rgba(52,152,219,.1);  color:#2471a3; }
+.tr { background:rgba(231,76,60,.1);   color:#a93226; }
 
-/* ── Botões ───────────────────────────────────────────── */
-.stButton > button {
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
-    font-weight: 600 !important;
-    border-radius: 10px !important;
-    padding: 0.55rem 1.2rem !important;
-    font-size: 0.85rem !important;
-    transition: all 0.2s ease !important;
-    letter-spacing: 0.01em !important;
-}
-.stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #0d2145, #1a3a6e) !important;
-    color: #FFD700 !important;
-    border: none !important;
-    box-shadow: 0 3px 10px rgba(13,33,69,0.35) !important;
-}
-.stButton > button[kind="primary"]:hover {
-    background: linear-gradient(135deg, #1a3a6e, #234d8a) !important;
-    box-shadow: 0 5px 15px rgba(13,33,69,0.45) !important;
-    transform: translateY(-1px) !important;
-}
-.stButton > button[kind="secondary"] {
-    background: #fff !important;
-    color: #0d2145 !important;
-    border: 1.5px solid #c7d2fe !important;
-}
-.stButton > button[kind="secondary"]:hover {
-    border-color: #0d2145 !important;
-    background: #f8faff !important;
-}
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVO — CELULAR (telas até 768px)
+   Empilha as colunas do Streamlit (KPIs, filtros, cabeçalho, chat)
+   em vez de espremer tudo lado a lado, e ajusta tamanhos de fonte
+   e espaçamento pra caber bem na tela pequena.
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+    .block-container {
+        padding-top: 3rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+    }
 
-/* ── Inputs ───────────────────────────────────────────── */
-[data-testid="stTextInput"] input,
-[data-testid="stTextArea"] textarea,
-[data-testid="stSelectbox"] > div > div {
-    border-radius: 10px !important;
-    border: 1.5px solid #e2e8f0 !important;
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
-    font-size: 0.88rem !important;
-    transition: border-color 0.2s !important;
-}
-[data-testid="stTextInput"] input:focus,
-[data-testid="stTextArea"] textarea:focus {
-    border-color: #0d2145 !important;
-    box-shadow: 0 0 0 3px rgba(13,33,69,0.1) !important;
-}
+    /* Empilha qualquer linha de colunas (KPIs, filtros do Rastreio,
+       cabeçalho, colunas do Chat) em vez de espremer horizontalmente */
+    div[data-testid="stHorizontalBlock"] {
+        flex-direction: column !important;
+    }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+        width: 100% !important;
+        min-width: 100% !important;
+        flex: 1 1 100% !important;
+        margin-bottom: 6px;
+    }
 
-/* ── Dataframe ────────────────────────────────────────── */
-[data-testid="stDataFrame"] {
-    border-radius: 12px !important;
-    overflow: hidden !important;
-    border: 1px solid #e2e8f0 !important;
-    box-shadow: 0 1px 6px rgba(0,0,0,0.06) !important;
-}
+    /* Cabeçalho: título compacto */
+    .ks-header {
+        padding: 12px 14px !important;
+        gap: 10px !important;
+    }
+    .ks-title { font-size: 1.1rem !important; }
+    .ks-sub   { font-size: 0.72rem !important; }
 
-/* ── Alertas e Info boxes ─────────────────────────────── */
-[data-testid="stAlert"] {
-    border-radius: 12px !important;
-    border: none !important;
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
-}
+    /* KPIs: menores pra caber 1 por linha sem ficar gigante */
+    .kpi-card { padding: 12px 10px !important; }
+    .kpi-value { font-size: 1.5rem !important; }
+    .kpi-label { font-size: 0.68rem !important; }
 
-/* ── Métricas ─────────────────────────────────────────── */
-[data-testid="stMetric"] {
-    background: #fff !important;
-    border-radius: 12px !important;
-    padding: 14px 16px !important;
-    border: 1px solid #e2e8f0 !important;
-}
-[data-testid="stMetricValue"] {
-    color: #0a1628 !important;
-    font-weight: 800 !important;
-}
+    /* Botões e inputs com alvo de toque melhor no dedo */
+    .stButton > button, .stTextInput input, .stSelectbox, .stDateInput input {
+        min-height: 42px !important;
+        font-size: 0.95rem !important;
+    }
 
-/* ── Containers com borda ─────────────────────────────── */
-[data-testid="stVerticalBlockBorderWrapper"] > div {
-    border-radius: 14px !important;
-    border: 1px solid #e2e8f0 !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
-}
+    /* Tabelas: permite rolar horizontalmente em vez de cortar colunas */
+    div[data-testid="stDataFrame"] {
+        overflow-x: auto !important;
+    }
 
-/* ── Expander ─────────────────────────────────────────── */
-[data-testid="stExpander"] {
-    border-radius: 12px !important;
-    border: 1px solid #e2e8f0 !important;
-    background: #fff !important;
-}
-
-/* ── Segmented control ────────────────────────────────── */
-[data-testid="stSegmentedControl"] {
-    background: #fff !important;
-    border-radius: 10px !important;
-    border: 1px solid #e2e8f0 !important;
-    padding: 4px !important;
-}
-
-/* ── Divider ──────────────────────────────────────────── */
-hr {
-    border-color: #e2e8f0 !important;
-}
-
-/* ── Scrollbar personalizada ──────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #f0f4f8; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-/* ── Sidebar logo/header ──────────────────────────────── */
-.sidebar-logo {
-    padding: 20px 16px 16px;
-    border-bottom: 1px solid rgba(255,215,0,0.15);
-    margin-bottom: 12px;
-}
-.sidebar-user-card {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,215,0,0.15);
-    border-radius: 12px;
-    padding: 12px 14px;
-    margin: 0 8px 16px;
+    /* Popup/dialog do motorista ocupa a tela quase inteira no celular */
+    div[role="dialog"] {
+        width: 95vw !important;
+        max-width: 95vw !important;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. SESSION STATE ---
-for key, default in {
-    "autenticado": False,
-    "user_info": None,
-    "user_id": None,
-    "pagina_atual": "Home"
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default
+# ── INIT SESSION STATE ─────────────────────────────────────────────
+if "user"         not in st.session_state: st.session_state.user = None
+if "modulo_ativo" not in st.session_state: st.session_state.modulo_ativo = "home"
 
-# --- 4. USUÁRIOS ---
-usuarios = obter_usuarios_cache()
-
-# --- 5. LOGIN ---
-if not st.session_state.autenticado:
-    if not usuarios:
-        st.error("Sistema offline. Verifique a conexão com Firebase.")
-        st.stop()
-    login.exibir_login(usuarios)
+# ── LOGIN — PARE AQUI SE NÃO LOGADO ──────────────────────────────
+if st.session_state.user is None:
+    # Esconde sidebar durante login
+    st.markdown("""
+    <style>
+    section[data-testid="stSidebar"] { display: none !important; }
+    </style>""", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    _, col, _ = st.columns([1,1,1])
+    with col:
+        lb = get_logo()
+        if lb:
+            st.markdown(
+                f'<div style="text-align:center;margin-bottom:20px;">'
+                f'<img src="data:image/png;base64,{lb}" style="height:80px;"></div>',
+                unsafe_allow_html=True)
+        st.markdown(
+            "<h2 style='text-align:center;color:#2c3e50;margin-bottom:20px;'>🔐 Acesso Restrito</h2>",
+            unsafe_allow_html=True)
+        usuario = st.text_input("Usuário")
+        senha   = st.text_input("Senha", type="password")
+        if st.button("Entrar", type="primary", use_container_width=True):
+            u = verificar_login(usuario, senha)
+            if u:
+                st.session_state.user = u
+                # Regra: após o login, a primeira página é a Home (Meu Dia) —
+                # exceto para motoristas, que não têm acesso a esse módulo e
+                # vão direto para o Rastreio (suas próprias entregas).
+                st.session_state.modulo_ativo = "rastreio" if u.get("role") == "motorista" else "home"
+                st.rerun()
+            else:
+                st.error("Credenciais inválidas.")
     st.stop()
 
-# --- 6. PERFIL ---
-user_id   = st.session_state.user_id
-user_info = st.session_state.user_info
+# ── USUÁRIO CONFIRMADO ────────────────────────────────────────────
+user  = st.session_state.user
+papel = user.get("role", "operacional")
+mods  = modulos_do_usuario(user)
 
-if not user_info and user_id in usuarios:
-    user_info = usuarios.get(user_id)
-    st.session_state.user_info = user_info
+# ══════════════════════════════════════════════════════════════════
+# VISÃO EXCLUSIVA DO MOTORISTA — sem sidebar, Rastreio e Chat em abas
+# ══════════════════════════════════════════════════════════════════
+if papel == "motorista":
+    st.markdown("""
+    <style>
+    section[data-testid="stSidebar"] { display: none !important; }
+    .block-container { padding-top: 1.2rem !important; }
+    </style>
+    """, unsafe_allow_html=True)
 
-if not user_info:
-    st.warning("⚠️ Perfil não identificado. Por favor, refaça o login.")
-    if st.button("Sair"):
-        st.session_state.autenticado = False
-        st.rerun()
+    lb = get_logo()
+    if lb:
+        st.markdown(
+            f'<div style="text-align:center;padding:6px 0 10px;">'
+            f'<img src="data:image/png;base64,{lb}" style="height:44px;"></div>',
+            unsafe_allow_html=True)
+
+    aba_entregas, aba_chat = st.tabs(["🚚 Minhas Entregas", "💬 Chat"])
+    with aba_entregas:
+        renderizar_rastreio(papel, user, datas_db=[], pode_exp=False)
+        if st.button("🔄 Atualizar entregas", key="btn_refresh_rastreio_motorista", use_container_width=True):
+            st.rerun()
+
+        # Nome do motorista + Sair ficam só aqui, no final da aba de entregas
+        st.markdown("<hr style='margin:20px 0 14px;border:none;border-top:1px solid #eee;'>",
+                    unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='text-align:center;color:#64778d;font-size:0.85rem;margin-bottom:8px;'>"
+            f"{user['nome']}</div>", unsafe_allow_html=True)
+        if st.button("Sair", key="btn_sair_motorista", use_container_width=True):
+            st.session_state.user = None
+            st.rerun()
+
+    with aba_chat:
+        try:
+            renderizar_chat(papel, user)
+        except Exception as _erro_chat_runtime:
+            st.error("⚠️ O Chat encontrou um problema e não pôde carregar agora.")
+            st.code(f"{type(_erro_chat_runtime).__name__}: {_erro_chat_runtime}", language="text")
+
     st.stop()
 
-user_role  = user_info.get('role', 'OPERACIONAL')
-is_adm     = (user_role == "ADM")
-permissoes = user_info.get('modulos', [])
-
-# --- 7. SIDEBAR VISUAL ---
+# ── SIDEBAR ───────────────────────────────────────────────────────
 with st.sidebar:
-    # Logo / Brand
-    st.markdown("""
-        <div class="sidebar-logo">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:38px;height:38px;background:linear-gradient(135deg,#FFD700,#FFA500);
-                            border-radius:10px;display:flex;align-items:center;justify-content:center;
-                            font-size:18px;font-weight:900;color:#0a1628;flex-shrink:0;">
-                    ✦
-                </div>
-                <div>
-                    <div style="color:#ffffff;font-size:14px;font-weight:800;
-                                font-family:'Plus Jakarta Sans',sans-serif;letter-spacing:-0.01em;">
-                        PORTAL GESTÃO
-                    </div>
-                    <div style="color:#FFD700;font-size:10px;font-weight:600;
-                                letter-spacing:0.1em;text-transform:uppercase;">
-                        Sistema Integrado
-                    </div>
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    lb = get_logo()
+    if lb:
+        st.markdown(
+            f'<div style="text-align:center;padding:18px 0 14px;">'
+            f'<img src="data:image/png;base64,{lb}" style="height:50px;"></div>',
+            unsafe_allow_html=True)
+    st.markdown('<div style="border-top:1px solid #e2e8f0;margin:0 8px 10px;"></div>',
+                unsafe_allow_html=True)
+    st.markdown('<span class="nav-section">Operacional</span>', unsafe_allow_html=True)
 
-    # User card
-    role_color = "#FFD700" if is_adm else "#7dd3fc"
-    role_label = "Administrador" if is_adm else user_role.title()
+    if papel != "motorista":
+        ativo_home = st.session_state.modulo_ativo == "home"
+        if st.button("🏠 Meu Dia", key="nav_home", use_container_width=True,
+                     type="primary" if ativo_home else "secondary"):
+            st.session_state.modulo_ativo = "home"
+            st.rerun()
+
+    # ── Grupo "Sistema" — Rastreio / Tickets / Cartas / Diagnóstico N2 ──
+    # Visual de sub-navegação (barra lateral discreta), propositalmente
+    # diferente do item "Meu Dia" (Operacional) e do botão "Configurações"
+    # (Administração), pra deixar a hierarquia da sidebar clara. O
+    # roteamento continua idêntico (cadeia de elif mais abaixo) — só
+    # mudou a apresentação visual.
+    st.markdown('<span class="nav-section">Sistema</span>', unsafe_allow_html=True)
+
+    with st.container(key="sistema_nav"):
+        for key, label in [("rastreio","Rastreio"), ("tickets","Tickets"), ("cartas","Cartas")]:
+            if key not in mods: continue
+            lbl = label
+            # Chat agora vive dentro do Rastreio (aba ao lado de Cadastros) —
+            # o badge de mensagens pendentes aparece aqui, no botão Rastreio.
+            # (cacheado por 5s em _total_chat_pendentes — ver database_chat.py
+            # para o motivo da otimização; sem isso, essa chamada rodava
+            # pesada a cada rerun de QUALQUER tela, não só do Chat.)
+            if key == "rastreio" and papel in ("adm", "supervisor"):
+                _pend_nav = _total_chat_pendentes()
+                if _pend_nav:
+                    lbl = f"{label} 💬 🔴 {_pend_nav}"
+            ativo = st.session_state.modulo_ativo == key
+            if st.button(lbl, key=f"nav_{key}", use_container_width=True,
+                         type="primary" if ativo else "secondary"):
+                st.session_state.modulo_ativo = key
+                st.rerun()
+
+        # Diagnóstico N2 — visível para adm/supervisor, agrupado dentro de
+        # "Sistema" junto com Rastreio/Tickets/Cartas. Sem ícone, para ficar
+        # no mesmo padrão dos demais itens do grupo. (não depende de
+        # 'modulos' do usuário no Firestore, então nenhum usuário existente
+        # precisa ser editado pra esse botão aparecer).
+        if papel in ("adm", "supervisor"):
+            ativo = st.session_state.modulo_ativo == "diagnostico"
+            if st.button("Diagnóstico N2", key="nav_diagnostico", use_container_width=True,
+                         type="primary" if ativo else "secondary"):
+                st.session_state.modulo_ativo = "diagnostico"
+                st.rerun()
+
+    # ── Grupo "Administração" — Configurações ──
+    # Seção própria, com rótulo e estilo de botão diferentes de Operacional
+    # e de Sistema (ver CSS .st-key-config_nav acima).
+    if papel == "adm":
+        st.markdown('<div style="border-top:1px solid #e2e8f0;margin:14px 8px 10px;"></div>',
+                    unsafe_allow_html=True)
+        st.markdown('<span class="nav-section">Administração</span>', unsafe_allow_html=True)
+        with st.container(key="config_nav"):
+            ativo = st.session_state.modulo_ativo == "config"
+            if st.button("Configurações", key="nav_config", use_container_width=True,
+                         type="primary" if ativo else "secondary"):
+                st.session_state.modulo_ativo = "config"
+                st.rerun()
+
+    st.markdown('<div style="border-top:1px solid #e2e8f0;margin:14px 8px 8px;"></div>',
+                unsafe_allow_html=True)
+
+# ── CABEÇALHO ─────────────────────────────────────────────────────
+lb        = get_logo()
+logo_html = (f'<img src="data:image/png;base64,{lb}" style="height:50px;margin-right:18px;">'
+             if lb else "")
+_NOMES_MODULOS = {"rastreio": "Rastreio", "tickets": "Tickets", "cartas": "Cartas"}
+pills = "".join(
+    f'<span class="ks-pill">{_NOMES_MODULOS[m]}</span>'
+    for m in mods if m in _NOMES_MODULOS
+)
+
+hc1, hc2 = st.columns([9, 1])
+with hc1:
     st.markdown(f"""
-        <div class="sidebar-user-card">
-            <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:36px;height:36px;background:linear-gradient(135deg,#FFD700,#FFA500);
-                            border-radius:50%;display:flex;align-items:center;justify-content:center;
-                            font-weight:800;color:#0a1628;font-size:14px;flex-shrink:0;">
-                    {user_info['nome'][0].upper()}
-                </div>
-                <div>
-                    <div style="color:#ffffff;font-size:13px;font-weight:700;
-                                font-family:'Plus Jakarta Sans',sans-serif;">
-                        {user_info['nome'].split()[0]}
-                    </div>
-                    <div style="color:{role_color};font-size:10px;font-weight:600;
-                                letter-spacing:0.06em;text-transform:uppercase;">
-                        {role_label}
-                    </div>
-                </div>
+    <div class="ks-header">
+        {logo_html}
+        <div style="flex:1;">
+            <div class="ks-title">Painel KingStar</div>
+            <div class="ks-sub">
+                KingStar Colchoes &nbsp;·&nbsp; by Wendley &nbsp;·&nbsp;
+                <span style="color:#C9A84C;font-weight:700;">Tempo Real</span>
+                &nbsp;·&nbsp; {agora_brt()}
             </div>
         </div>
-    """, unsafe_allow_html=True)
-
-    # Navegação
-    menu_options = ["🏠 Home"]
-    for label, id_modulo in getattr(config, 'MAPA_MODULOS_MESTRE', {}).items():
-        if is_adm or id_modulo in permissoes:
-            menu_options.append(label)
-    if is_adm:
-        menu_options.append("⚙️ Central de Comando")
-
-    st.markdown("""
-        <div style="color:rgba(200,216,240,0.5);font-size:10px;font-weight:700;
-                    letter-spacing:0.12em;text-transform:uppercase;
-                    padding:8px 16px 6px;margin-top:4px;">
-            NAVEGAÇÃO
+        <div style="text-align:right;white-space:nowrap;">
+            <div style="font-size:0.88rem;font-weight:700;color:#2c3e50;margin-bottom:4px;">{user['nome']}</div>
+            <div>{pills}<span class="ks-nivel">{papel.upper()}</span></div>
         </div>
+    </div>
     """, unsafe_allow_html=True)
+with hc2:
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("Sair", key="btn_sair", use_container_width=True):
+        st.session_state.user = None
+        st.rerun()
 
-    escolha = st.radio(
-        "menu",
-        menu_options,
-        label_visibility="collapsed",
-        key="nav_radio"
+# ── DADOS ─────────────────────────────────────────────────────────
+modulo_ativo = st.session_state.modulo_ativo
+
+def _obter_datas_disponiveis_protegido():
+    """
+    [CORREÇÃO — ponto de falha desprotegido] Esta chamada rodava FORA de
+    `_executar_modulo_protegido`, direto no meio do script — se o
+    Firestore falhasse aqui (cota estourada, índice faltando, etc.), a
+    página inteira quebrava antes mesmo de chegar no roteamento, mesmo já
+    com a blindagem dos módulos em vigor. Agora qualquer erro aqui vira só
+    um aviso, e `datas_db` volta como lista vazia (o Rastreio ainda abre,
+    só sem o histórico de dias anteriores no seletor de período).
+    """
+    try:
+        return obter_datas_disponiveis_db()
+    except _ResourceExhausted:
+        st.warning(
+            "⚠️ Não foi possível carregar o histórico de dias do Rastreio agora "
+            "(cota de leitura do Firestore esgotada — ver Firebase Console → "
+            "Uso e faturamento). O Rastreio ainda abre, mostrando só o dia de hoje."
+        )
+        return []
+    except Exception as e:
+        st.warning("⚠️ Não foi possível carregar o histórico de dias do Rastreio agora.")
+        return []
+
+# OTIMIZAÇÃO: obter_datas_disponiveis_db() varre a coleção 'entregas'
+# inteira (todo o histórico de entregas já feitas) só para montar a
+# lista de datas do seletor do Rastreio. Antes rodava incondicionalmente
+# em TODA renderização (Tickets, Cartas, Configurações...), mesmo quando
+# a tela em questão nunca usa esse dado. Agora só busca quando o módulo
+# Rastreio está de fato aberto (também é cacheada por 60s em database.py).
+datas_db = _obter_datas_disponiveis_protegido() if modulo_ativo == "rastreio" else []
+
+# Motorista não tem acesso ao módulo Home — se a sessão dele ainda
+# apontar pra lá (ex: login antigo, antes dessa regra existir), redireciona.
+if papel == "motorista" and modulo_ativo == "home":
+    st.session_state.modulo_ativo = "rastreio"
+    modulo_ativo = "rastreio"
+    st.rerun()
+
+# Chat deixou de ser um módulo próprio — agora é uma aba dentro do
+# Rastreio (ao lado de Cadastros). Sessões antigas que ainda apontem
+# pra "chat" são redirecionadas pra lá.
+if modulo_ativo == "chat":
+    st.session_state.modulo_ativo = "rastreio"
+    modulo_ativo = "rastreio"
+    st.rerun()
+
+# ── NOTIFICAÇÃO DE CHAT NO PAINEL GERAL (visível em qualquer tela, exceto dentro do Rastreio) ──
+if papel in ("adm", "supervisor") and modulo_ativo != "rastreio":
+    _pend_geral = _total_chat_pendentes()
+    if _pend_geral:
+        st.info(f"💬 Você tem **{_pend_geral}** mensagem(ns) de motoristas aguardando resposta. "
+                f"Acesse **Rastreio → aba Chat** para responder.")
+
+# Se o módulo Rastreio precisar dessas datas mas o usuário navegou para
+# outra aba antes deste ponto, garante que datas_db já esteja resolvido
+# (evita usar variável desatualizada quando modulo_ativo mudou acima).
+if modulo_ativo == "rastreio" and not datas_db:
+    datas_db = _obter_datas_disponiveis_protegido()
+
+def _renderizar_bloco_configuracoes():
+    st.subheader("⚙️ Configurações")
+
+    # ── Helpers de gerenciamento (sub-abas por departamento) ──────────
+    def _gerenciar_usuario(u, dep_nomes, ctx, idx):
+        uname = u.get("usuario", f"u{idx}")
+        dep   = u.get("departamento", "—") or "—"
+        role  = u.get("role", "—")
+        with st.expander(f"**{u.get('nome','—')}** · `{uname}` · {role.upper()} · 🏢 {dep}"):
+
+            # ── Editar Perfil (Nome / Nível) ──────────────────────────
+            st.markdown("**✏️ Editar Perfil**")
+            pc1, pc2 = st.columns(2)
+            novo_nome_p = pc1.text_input("Nome completo", value=u.get("nome", ""),
+                                          key=f"nome_{ctx}_{uname}_{idx}")
+            niveis = ["operacional", "supervisor", "adm", "motorista"]
+            idx_nivel = niveis.index(role) if role in niveis else 0
+            novo_nivel_p = pc2.selectbox("Nível", niveis, index=idx_nivel,
+                                          key=f"nivel_{ctx}_{uname}_{idx}",
+                                          disabled=(uname == "admin"))
+            if st.button("💾 Salvar Perfil", key=f"svperfil_{ctx}_{uname}_{idx}",
+                         disabled=(uname == "admin")):
+                if not novo_nome_p.strip():
+                    st.error("O nome não pode ficar em branco.")
+                else:
+                    ok, msg = atualizar_perfil_usuario(uname, novo_nome_p, novo_nivel_p)
+                    (st.success if ok else st.error)(msg)
+                    if ok:
+                        time.sleep(.5); st.rerun()
+
+            st.markdown("---")
+
+            # ── Editar Login (recria o documento — ação sensível) ─────
+            st.markdown("**🔁 Alterar Login**")
+            st.caption("O login é o identificador do usuário no banco (usado pra entrar no "
+                       "sistema). Alterá-lo recria o cadastro com o novo login e apaga o "
+                       "antigo — confirme antes de salvar.")
+            novo_login_p = st.text_input("Novo login", value=uname,
+                                          key=f"login_{ctx}_{uname}_{idx}",
+                                          disabled=(uname == "admin"))
+            confirma_login = st.checkbox("Confirmo que quero renomear este login",
+                                          key=f"confloginn_{ctx}_{uname}_{idx}",
+                                          disabled=(uname == "admin"))
+            if st.button("🔁 Renomear Login", key=f"svlogin_{ctx}_{uname}_{idx}",
+                         disabled=(uname == "admin")):
+                novo_login_norm = novo_login_p.strip().lower()
+                if not novo_login_norm:
+                    st.error("O login não pode ficar em branco.")
+                elif novo_login_norm == uname:
+                    st.info("Esse já é o login atual.")
+                elif not confirma_login:
+                    st.warning("Marque a confirmação para renomear o login.")
+                else:
+                    ok, msg = renomear_login_usuario(uname, novo_login_norm)
+                    (st.success if ok else st.error)(msg)
+                    if ok:
+                        time.sleep(.6); st.rerun()
+
+            st.markdown("---")
+
+            # Departamento
+            if dep_nomes:
+                ix = (dep_nomes.index(dep) + 1) if dep in dep_nomes else 0
+                novo_dep = st.selectbox("Departamento", ["— Selecione —"] + dep_nomes,
+                                        index=ix, key=f"dep_{ctx}_{uname}_{idx}")
+                if st.button("💾 Atualizar departamento", key=f"svdep_{ctx}_{uname}_{idx}"):
+                    if novo_dep != "— Selecione —":
+                        atualizar_departamento_usuario(uname, novo_dep)
+                        st.success("Departamento atualizado!"); time.sleep(.5); st.rerun()
+
+            # Alterar senha (reset pelo admin)
+            if uname != "admin":
+                st.markdown("**🔑 Redefinir senha**")
+                ns  = st.text_input("Nova senha", type="password", key=f"ns_{ctx}_{uname}_{idx}")
+                ns2 = st.text_input("Confirmar nova senha", type="password", key=f"ns2_{ctx}_{uname}_{idx}")
+                if st.button("Salvar nova senha", key=f"svsenha_{ctx}_{uname}_{idx}"):
+                    if not ns or len(ns) < 6:
+                        st.error("A senha deve ter pelo menos 6 caracteres.")
+                    elif ns != ns2:
+                        st.error("As senhas não coincidem.")
+                    else:
+                        ok, msg = redefinir_senha_usuario(uname, ns)
+                        (st.success if ok else st.error)(msg)
+                        if ok: time.sleep(.6); st.rerun()
+
+            # Excluir
+            if uname != "admin":
+                st.markdown("---")
+                if st.button("🗑️ Excluir usuário", key=f"del_{ctx}_{uname}_{idx}"):
+                    deletar_usuario(uname); st.rerun()
+
+    def _perm_card(u, ctx, idx):
+        uname = u.get("usuario", f"u{idx}")
+        umods = u.get("modulos", MODULOS_PADRAO.get(u.get("role","operacional"), []))
+        with st.expander(f"**{u.get('nome','—')}** · `{uname}`"):
+            ma, mb, mc = st.columns(3)
+            nr = ma.checkbox("Rastreio", value="rastreio" in umods, key=f"r_{ctx}_{uname}_{idx}")
+            nt = mb.checkbox("Tickets",  value="tickets"  in umods, key=f"t_{ctx}_{uname}_{idx}")
+            nca = mc.checkbox("Cartas",  value="cartas"   in umods, key=f"c_{ctx}_{uname}_{idx}")
+            if st.button("💾 Salvar", key=f"svperm_{ctx}_{uname}_{idx}", type="primary"):
+                ns = [m for m,v in [("rastreio",nr),("tickets",nt),("cartas",nca),("exportar",nr)] if v]
+                atualizar_modulos_usuario(uname, ns)
+                st.success("Salvo!"); time.sleep(.5); st.rerun()
+
+    aba_u, aba_m, aba_dep, aba_mot = st.tabs(
+        ["👥 Usuários", "🔒 Permissões", "🏢 Departamentos", "🗂️ Motivos"]
     )
 
-    # Rodapé da sidebar
-    st.markdown("""
-        <div style="position:fixed;bottom:16px;left:0;width:260px;
-                    padding:0 16px;pointer-events:none;">
-            <div style="border-top:1px solid rgba(255,215,0,0.12);
-                        padding-top:12px;text-align:center;">
-                <div style="color:rgba(200,216,240,0.35);font-size:10px;
-                            font-family:'Plus Jakarta Sans',sans-serif;">
-                    v2.0 · Portal de Gestão
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    # ─── ABA USUÁRIOS (sub-abas por departamento) ─────────────────
+    with aba_u:
+        deps      = listar_departamentos()
+        dep_nomes = [d["nome"] for d in deps]
 
-# --- 8. ROTEADOR ---
-try:
-    if "Home" in escolha:
-        home.exibir(user_info)
+        with st.expander("➕ Cadastrar Novo Usuário", expanded=False):
+            if not dep_nomes:
+                st.info("⚠️ Cadastre um departamento na aba **Departamentos** antes de criar usuários.")
+            with st.form("form_novo"):
+                c1, c2  = st.columns(2)
+                n_nome  = c1.text_input("Nome Completo")
+                n_user  = c2.text_input("Login")
+                n_senha = c1.text_input("Senha", type="password")
+                n_nivel = c2.selectbox("Nível", ["operacional","supervisor","adm"])
+                n_dep   = st.selectbox("Departamento",
+                                       options=(["— Selecione —"] + dep_nomes),
+                                       help="Tickets do departamento caem automaticamente para este usuário.")
+                ma, mb, mc = st.columns(3)
+                m_r     = ma.checkbox("Rastreio", value=True)
+                m_t     = mb.checkbox("Tickets", value=n_nivel in ("supervisor","adm"))
+                m_c     = mc.checkbox("Cartas", value=n_nivel in ("supervisor","adm"))
+                if st.form_submit_button("Criar"):
+                    if not (n_nome and n_user and n_senha):
+                        st.warning("Preencha todos os campos.")
+                    elif n_dep == "— Selecione —":
+                        st.warning("Selecione um departamento.")
+                    else:
+                        ms = [m for m,v in [("rastreio",m_r),("tickets",m_t),("cartas",m_c),("exportar",m_r)] if v]
+                        criar_usuario(n_nome, n_user, n_senha, n_nivel, ms, departamento=n_dep)
+                        st.success(f"Usuário **{n_user}** criado no depto **{n_dep}**!")
+                        time.sleep(1); st.rerun()
 
-    elif "Diário de Trocas" in escolha:
-        from views import diario_de_bordo
-        diario_de_bordo.exibir(user_info)
-    
-    elif "RH Docs" in escolha or "Cartas" in escolha:
-        from views import mod_cartas
-        mod_cartas.exibir(user_role)
+        st.markdown("---")
+        st.markdown("### Usuários por Departamento")
+        if not dep_nomes:
+            st.info("Crie um departamento para organizar os usuários.")
+        else:
+            usuarios = listar_usuarios()
+            sub = st.tabs([f"🏢 {d}" for d in dep_nomes] + ["📦 Outros"])
+            for i, dn in enumerate(dep_nomes):
+                with sub[i]:
+                    ldep = [u for u in usuarios if u.get("departamento") == dn]
+                    if not ldep:
+                        st.caption("Nenhum usuário neste departamento.")
+                    for j, u in enumerate(ldep):
+                        _gerenciar_usuario(u, dep_nomes, f"u{i}", j)
+            with sub[-1]:
+                outros = [u for u in usuarios if (u.get("departamento") or "") not in dep_nomes]
+                if not outros:
+                    st.caption("Nenhum usuário sem departamento.")
+                for j, u in enumerate(outros):
+                    _gerenciar_usuario(u, dep_nomes, "uout", j)
 
-    elif "Processos" in escolha:
-        from views import mod_processos
-        mod_processos.exibir(user_role=user_role)
+    # ─── ABA PERMISSÕES (sub-abas por departamento) ───────────────
+    with aba_m:
+        deps      = listar_departamentos()
+        dep_nomes = [d["nome"] for d in deps]
+        st.markdown("### Permissões por Departamento")
+        if not dep_nomes:
+            st.info("Crie um departamento para organizar as permissões.")
+        else:
+            usuarios = listar_usuarios()
+            sub = st.tabs([f"🏢 {d}" for d in dep_nomes] + ["📦 Outros"])
+            for i, dn in enumerate(dep_nomes):
+                with sub[i]:
+                    ldep = [u for u in usuarios if u.get("departamento") == dn]
+                    if not ldep:
+                        st.caption("Nenhum usuário neste departamento.")
+                    for j, u in enumerate(ldep):
+                        _perm_card(u, f"p{i}", j)
+            with sub[-1]:
+                outros = [u for u in usuarios if (u.get("departamento") or "") not in dep_nomes]
+                if not outros:
+                    st.caption("Nenhum usuário sem departamento.")
+                for j, u in enumerate(outros):
+                    _perm_card(u, "pout", j)
 
-    elif "Central de Comando" in escolha:
-        from views import central
-        central.exibir(is_adm)
+    # ─── ABA DEPARTAMENTOS (sem divisão) ──────────────────────────
+    with aba_dep:
+        st.markdown("### 🏢 Departamentos")
+        with st.expander("➕ Novo Departamento", expanded=True):
+            with st.form("form_dep"):
+                d_nome = st.text_input("Nome do Departamento",
+                                       placeholder="Ex: Pós-venda, Logística, Financeiro...")
+                d_desc = st.text_area("Descrição (opcional)", height=80)
+                if st.form_submit_button("Criar Departamento"):
+                    ok, msg = criar_departamento(d_nome, d_desc)
+                    (st.success if ok else st.error)(msg)
+                    if ok: time.sleep(.8); st.rerun()
 
-except Exception as e:
-    st.error(f"Ocorreu um erro ao carregar o módulo: {escolha}")
-    st.info("Abaixo está o erro real capturado pelo Python para podermos corrigir:")
-    
-    # ISSO VAI MOSTRAR O TRACEBACK COMPLETO NA TELA DO SEU NAVEGADOR:
-    st.exception(e) 
-    
-    print(f"DEBUG: Erro no módulo {escolha}: {e}")
+        st.markdown("---")
+        deps = listar_departamentos()
+        if not deps:
+            st.info("Nenhum departamento cadastrado ainda.")
+        for dep in deps:
+            users_dep = [u for u in listar_usuarios() if u.get("departamento") == dep["nome"]]
+            with st.expander(f"🏢 **{dep['nome']}** · 👤 {len(users_dep)} usuário(s)"):
+                if dep.get("descricao"):
+                    st.caption(dep["descricao"])
+                if users_dep:
+                    st.markdown("**Usuários:** " + ", ".join(f"`{u['usuario']}`" for u in users_dep))
+                if st.button(f"🗑️ Excluir '{dep['nome']}'", key=f"deldep_{dep['id']}"):
+                    ok, msg = deletar_departamento(dep["id"])
+                    (st.success if ok else st.error)(msg)
+                    if ok: time.sleep(.5); st.rerun()
+
+    # ─── ABA MOTIVOS (Motivo Pai → Motivo Filho → Etapa) ──────────
+    # Substitui a lógica antiga de Tabulação para o módulo de Tickets:
+    # Motivo Pai carrega o SLA de triagem (SLA1); Motivo Filho e Etapa são
+    # escolhidos pelo atendente durante o atendimento (ver mod_tickets.py).
+    # Etapas vermelhas exigem data futura (SLA2) e travam a trilha do ticket.
+    with aba_mot:
+        try:
+            from modulo.mod_motivos import renderizar_motivos
+            renderizar_motivos(papel, listar_usuarios())
+        except Exception as _erro_import_motivos:
+            st.error("⚠️ Falha ao carregar o cadastro de Motivos. Detalhe técnico abaixo:")
+            st.exception(_erro_import_motivos)
+
+
+# ── ROTEAMENTO ────────────────────────────────────────────────────
+# [NOVO] Cada chamada abaixo passa por `_executar_modulo_protegido` — ver
+# nota de blindagem de runtime logo acima. Um erro em qualquer módulo
+# (cota do Firestore, índice faltando, bug pontual) mostra um aviso só
+# naquela tela; a sidebar e os outros módulos continuam acessíveis.
+if modulo_ativo == "home":
+    _executar_modulo_protegido("Meu Dia", renderizar_home, papel, user)
+
+elif modulo_ativo == "rastreio" and tem_permissao(user, "rastreio"):
+    is_hoje = _executar_modulo_protegido(
+        "Rastreio", renderizar_rastreio,
+        papel, user, datas_db=datas_db, pode_exp=pode_exportar(user)
+    )
+    # Atualização manual em vez de streamlit-autorefresh: esse componente
+    # tem um bug conhecido de deixar o timer JS "vivo" no navegador mesmo
+    # depois de trocar de aba, o que pode travar OUTRAS telas do sistema
+    # (Cartas, Tickets etc.) sem relação nenhuma com o Rastreio. Um botão
+    # manual é 100% seguro e não tem esse risco.
+    if is_hoje:
+        if st.button("🔄 Atualizar rastreio", key="btn_refresh_rastreio"):
+            st.rerun()
+
+elif modulo_ativo == "tickets" and tem_permissao(user, "tickets"):
+    _executar_modulo_protegido("Tickets", renderizar_tickets, papel, user)
+
+elif modulo_ativo == "cartas" and tem_permissao(user, "cartas"):
+    _executar_modulo_protegido("Cartas", renderizar_cartas, papel, user)
+
+elif modulo_ativo == "diagnostico" and papel in ("adm", "supervisor"):
+    _executar_modulo_protegido("Diagnóstico N2", renderizar_diagnostico, papel, user)
+
+elif modulo_ativo == "config" and papel == "adm":
+    _executar_modulo_protegido("Configurações", _renderizar_bloco_configuracoes)
+
+
+
+else:
+    # ── MINHA CONTA — qualquer usuário logado pode trocar a senha ──
+    st.subheader("👤 Minha Conta")
+    dep_user = user.get("departamento", "—") or "—"
+    st.markdown(f"**Nome:** {user['nome']}  |  **Login:** `{user.get('usuario','')}`  |  "
+                f"**Nível:** {papel.upper()}  |  **Departamento:** {dep_user}")
+    st.markdown("---")
+    st.markdown("### 🔑 Alterar Senha")
+    with st.form("form_senha"):
+        s_atual  = st.text_input("Senha atual", type="password")
+        s_nova   = st.text_input("Nova senha", type="password")
+        s_conf   = st.text_input("Confirmar nova senha", type="password")
+        if st.form_submit_button("Alterar Senha", type="primary"):
+            if not s_atual or not s_nova or not s_conf:
+                st.warning("Preencha todos os campos.")
+            elif s_nova != s_conf:
+                st.error("As senhas não coincidem.")
+            elif len(s_nova) < 6:
+                st.error("A nova senha deve ter pelo menos 6 caracteres.")
+            else:
+                ok, msg = alterar_senha_usuario(user.get("usuario",""), s_atual, s_nova)
+                if ok:
+                    st.success(msg)
+                    time.sleep(1)
+                    st.session_state.user = None
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+# ── BOTÃO MINHA CONTA na sidebar ──────────────────────────────────
+with st.sidebar:
+    st.markdown('<div style="border-top:1px solid #e2e8f0;margin:8px 8px 10px;"></div>',
+                unsafe_allow_html=True)
+    if st.button("👤 Minha Conta", key="nav_conta", use_container_width=True,
+                 type="secondary"):
+        st.session_state.modulo_ativo = "conta"
+        st.rerun()
