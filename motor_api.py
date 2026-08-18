@@ -285,22 +285,29 @@ def enviar_whatsapp_twilio(telefone: str, mensagem: str) -> bool:
         return False
 
 
-@app.post("/gps/{ticket_id}")
-async def receber_gps(ticket_id: str, request: Request):
+@app.post("/gps/{motorista_login}")
+async def receber_gps(motorista_login: str, request: Request):
     """
-    Recebe um ping de GPS do celular do motorista (motorista_gps_tracker.html)
-    para uma entrega específica (ticket_id = _doc_id da entrega no Firestore).
+    Recebe um ping de GPS do celular do motorista.
+
+    [ATUALIZADO] `motorista_login` é o LOGIN do motorista (não mais o
+    ticket_id de uma entrega específica) — o compartilhamento de GPS
+    passou a ser UMA VEZ POR MOTORISTA, válido para todas as entregas dele
+    no dia, em vez de precisar ativar/compartilhar de novo a cada entrega.
 
     Body esperado (JSON):
       { "lat": -23.55, "lng": -46.63, "velocidade_kmh": 32, "precisao_m": 12,
         "atualizado_em": "2026-08-17T15:30:00.000Z" }
 
     Passos:
-      1. Grava a posição em /posicoes_motoristas/{ticket_id}
-      2. Lê a config de rastreio ao vivo da entrega em /entregas_rastreio_live/{ticket_id}
-      3. Se a config existir e o alerta ainda não tiver sido enviado,
-         calcula a distância até o destino e, se estiver dentro do limite,
-         dispara o WhatsApp e marca o alerta como enviado (não repete).
+      1. Grava a posição em /posicoes_motoristas/{motorista_login}
+      2. Busca TODAS as entregas com rastreio ao vivo ativo desse motorista
+         (/entregas_rastreio_live onde motorista_login == este motorista e
+         alerta ainda não enviado) — pode ter mais de uma entrega ativa ao
+         mesmo tempo.
+      3. Para cada uma, calcula a distância até o destino e, se estiver
+         dentro do limite, dispara o WhatsApp e marca o alerta como
+         enviado (não repete por entrega).
     """
     try:
         body = await request.json()
@@ -317,7 +324,7 @@ async def receber_gps(ticket_id: str, request: Request):
     atualizado_em  = body.get("atualizado_em") or agora_brt()
 
     # 1) Grava a posição — é isso que o Streamlit e a página do cliente leem.
-    db.collection("posicoes_motoristas").document(ticket_id).set({
+    db.collection("posicoes_motoristas").document(motorista_login).set({
         "lat": lat,
         "lng": lng,
         "velocidade_kmh": velocidade_kmh,
@@ -327,64 +334,80 @@ async def receber_gps(ticket_id: str, request: Request):
 
     resultado = {
         "status": "posicao_registrada",
-        "ticket_id": ticket_id,
-        "distancia_km": None,
-        "eta_min": None,
-        "alerta_disparado": False,
+        "motorista_login": motorista_login,
+        "entregas_com_alerta_calculado": [],
     }
 
-    # 2) Lê a config da entrega (destino + telefone do cliente + flag de alerta)
-    config_ref = db.collection("entregas_rastreio_live").document(ticket_id)
-    config_doc = config_ref.get()
+    # 2) Busca TODAS as entregas ativas desse motorista (pode ter mais de
+    #    uma ao mesmo tempo — ex: várias entregas na rota do dia).
+    entregas_ativas = (
+        db.collection("entregas_rastreio_live")
+        .where("motorista_login", "==", motorista_login)
+        .stream()
+    )
 
-    if not config_doc.exists:
-        # Posição gravada normalmente, mas essa entrega ainda não teve o
-        # rastreio ao vivo "ativado" no Streamlit (sem destino cadastrado,
-        # não dá pra calcular distância nem disparar alerta).
-        print(f"[{agora_brt()}] Ping recebido para {ticket_id}, mas sem config de rastreio ao vivo ainda.")
-        return resultado
+    for doc in entregas_ativas:
+        config = doc.to_dict()
+        ticket_id = doc.id
+        dist_km = estimar_distancia_rota_km(lat, lng, config["destino_lat"], config["destino_lng"])
+        eta_min = calcular_eta_minutos(dist_km, velocidade_kmh)
 
-    config = config_doc.to_dict()
-    dist_km = estimar_distancia_rota_km(lat, lng, config["destino_lat"], config["destino_lng"])
-    eta_min = calcular_eta_minutos(dist_km, velocidade_kmh)
+        item = {
+            "ticket_id": ticket_id,
+            "distancia_km": round(dist_km, 2),
+            "eta_min": eta_min,
+            "alerta_disparado": False,
+        }
 
-    resultado["distancia_km"] = round(dist_km, 2)
-    resultado["eta_min"] = eta_min
+        # 3) Gatilho do alerta — dispara UMA ÚNICA VEZ por entrega.
+        if not config.get("alerta_5km_enviado") and dist_km <= LIMITE_ALERTA_KM:
+            mensagem = (
+                f"🚚 Seu pedido está chegando! Faltam aproximadamente "
+                f"{dist_km:.1f} km — previsão de chegada em {eta_min} min."
+            )
+            enviado = enviar_whatsapp_twilio(config.get("cliente_telefone", ""), mensagem)
 
-    # 3) Gatilho do alerta — dispara UMA ÚNICA VEZ por entrega.
-    if not config.get("alerta_5km_enviado") and dist_km <= LIMITE_ALERTA_KM:
-        mensagem = (
-            f"🚚 Seu pedido está chegando! Faltam aproximadamente "
-            f"{dist_km:.1f} km — previsão de chegada em {eta_min} min."
-        )
-        enviado = enviar_whatsapp_twilio(config.get("cliente_telefone", ""), mensagem)
+            # Marca como enviado MESMO se o Twilio falhar (ex: número
+            # inválido), para não ficar tentando reenviar a cada ping novo
+            # caso o problema seja persistente.
+            doc.reference.update({"alerta_5km_enviado": True})
+            item["alerta_disparado"] = enviado
 
-        # Marca como enviado MESMO se o Twilio falhar (ex: número inválido),
-        # para não ficar tentando reenviar a cada ping novo (a cada poucos
-        # segundos) caso o problema seja persistente. Se quiser tentar de
-        # novo manualmente, dá pra resetar o campo direto no Firestore.
-        config_ref.update({"alerta_5km_enviado": True})
-        resultado["alerta_disparado"] = enviado
+            print(f"[{agora_brt()}] Alerta de proximidade para {ticket_id} "
+                  f"(motorista {motorista_login}): {dist_km:.1f}km, WhatsApp "
+                  f"{'enviado' if enviado else 'NÃO enviado (ver log acima)'}.")
 
-        print(f"[{agora_brt()}] Alerta de proximidade para {ticket_id}: "
-              f"{dist_km:.1f}km, WhatsApp {'enviado' if enviado else 'NÃO enviado (ver log acima)'}.")
+        resultado["entregas_com_alerta_calculado"].append(item)
 
     return resultado
 
 
 @app.get("/gps/{ticket_id}")
 def consultar_gps(ticket_id: str):
-    """Endpoint auxiliar de leitura — útil para testar rapidamente pelo
-    navegador/Postman se um ticket_id já tem posição e config gravadas,
-    sem precisar abrir o Streamlit. Também é o endpoint que a página
-    pública /rastreio/{ticket_id} (abaixo) consulta a cada poucos segundos
-    para desenhar o mapa do cliente."""
-    pos_doc = db.collection("posicoes_motoristas").document(ticket_id).get()
+    """
+    Endpoint consultado pela página pública do CLIENTE (GET /rastreio/{ticket_id})
+    a cada poucos segundos, para desenhar o mapa.
+
+    [ATUALIZADO] A posição não é mais gravada por ticket_id — ela é
+    gravada por MOTORISTA (ver POST /gps/{motorista_login} acima). Este
+    endpoint, portanto, resolve em duas etapas:
+      1. Busca a config da entrega (destino) por ticket_id, como antes.
+      2. Descobre qual motorista está atrelado a essa entrega
+         (config['motorista_login']) e busca a posição DELE.
+    A resposta continua no mesmo formato de antes ({posicao, config}),
+    então a página do cliente não precisou de nenhuma mudança.
+    """
     cfg_doc = db.collection("entregas_rastreio_live").document(ticket_id).get()
-    return {
-        "posicao": pos_doc.to_dict() if pos_doc.exists else None,
-        "config": cfg_doc.to_dict() if cfg_doc.exists else None,
-    }
+    config = cfg_doc.to_dict() if cfg_doc.exists else None
+
+    posicao = None
+    if config:
+        motorista_login = config.get("motorista_login", "")
+        if motorista_login:
+            pos_doc = db.collection("posicoes_motoristas").document(motorista_login).get()
+            posicao = pos_doc.to_dict() if pos_doc.exists else None
+
+    return {"posicao": posicao, "config": config}
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -572,7 +595,7 @@ _HTML_MOTORISTA_GPS_TEMPLATE = """<!DOCTYPE html>
   <button id="botao" onclick="iniciar()">📍 Compartilhar minha localização</button>
 
   <script>
-    const TICKET_ID = __TICKET_ID_JSON__;
+    const MOTORISTA_LOGIN = __TICKET_ID_JSON__;
     let watchId = null;
     let contadorEnvios = 0;
 
@@ -585,7 +608,7 @@ _HTML_MOTORISTA_GPS_TEMPLATE = """<!DOCTYPE html>
     async function enviarPosicao(lat, lng, velocidadeMs, precisao) {
       try {
         const velocidadeKmh = (velocidadeMs && velocidadeMs > 0) ? velocidadeMs * 3.6 : null;
-        await fetch('/gps/' + TICKET_ID, {
+        await fetch('/gps/' + MOTORISTA_LOGIN, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -633,10 +656,16 @@ _HTML_MOTORISTA_GPS_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
-@app.get("/motorista/{ticket_id}", response_class=HTMLResponse)
-def pagina_motorista_gps(ticket_id: str):
+@app.get("/motorista/{motorista_login}", response_class=HTMLResponse)
+def pagina_motorista_gps(motorista_login: str):
+    """
+    [ATUALIZADO] Agora é por LOGIN do motorista (não mais por ticket_id de
+    uma entrega) — ele libera o GPS UMA VEZ por sessão de trabalho, e isso
+    vale para todas as entregas dele no dia, sem precisar repetir por
+    entrega. Este link é a mesma URL a cada dia para o mesmo motorista.
+    """
     html = _HTML_MOTORISTA_GPS_TEMPLATE.replace(
-        "__TICKET_ID_JSON__", json.dumps(ticket_id)
+        "__TICKET_ID_JSON__", json.dumps(motorista_login)
     )
     return HTMLResponse(content=html)
 
