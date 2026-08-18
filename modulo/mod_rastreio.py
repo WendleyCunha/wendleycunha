@@ -646,6 +646,7 @@ def _aba_rastreio_ao_vivo(df_dia, data_consulta, user):
 
     endereco = str(linha.get("address", "") or "")
     telefone = str(linha.get("contact_phone", "") or "")
+    login_motorista_entrega = extrair_chave(linha.get("route", ""))
     st.caption(f"Endereço da entrega: {endereco or '—'}")
 
     usar_manual_key = f"live_manual_{ticket_id}"
@@ -654,7 +655,7 @@ def _aba_rastreio_ao_vivo(df_dia, data_consulta, user):
         if lat is None:
             st.session_state[usar_manual_key] = True
         else:
-            iniciar_rastreio_live_db(ticket_id, lat, lng, telefone)
+            iniciar_rastreio_live_db(ticket_id, lat, lng, telefone, login_motorista_entrega)
             st.success("Rastreio ao vivo ativado! O link do cliente já aparece acima.")
             time.sleep(_PAUSA_TOAST)
             st.rerun()
@@ -668,7 +669,7 @@ def _aba_rastreio_ao_vivo(df_dia, data_consulta, user):
             if lat_manual == 0 and lng_manual == 0:
                 st.warning("Informe coordenadas válidas antes de confirmar.")
             else:
-                iniciar_rastreio_live_db(ticket_id, lat_manual, lng_manual, telefone)
+                iniciar_rastreio_live_db(ticket_id, lat_manual, lng_manual, telefone, login_motorista_entrega)
                 st.session_state.pop(usar_manual_key, None)
                 st.success("Rastreio ao vivo ativado com coordenadas manuais!")
                 time.sleep(_PAUSA_TOAST)
@@ -679,6 +680,58 @@ def _aba_rastreio_ao_vivo(df_dia, data_consulta, user):
 def _visualizacao_motorista(user):
     hoje = datetime.now(BRT).date().isoformat()
     minha_chave = user.get("usuario", "")
+
+    # ── [NOVO] Compartilhamento de localização — obrigatório, uma vez por
+    # sessão de trabalho (não mais por entrega). Diferente de um simples
+    # aviso "confie em mim", isso CONFERE DE VERDADE se já está chegando
+    # GPS desse motorista (olhando o último ping salvo), em vez de só
+    # confiar numa caixinha marcada pelo próprio motorista.
+    #
+    # IMPORTANTE — limite real de qualquer navegador, não desta
+    # implementação: nenhum código consegue ativar o GPS do celular sem
+    # o motorista confirmar manualmente na caixinha de permissão nativa do
+    # sistema. O que dá pra garantir é que isso seja o PRIMEIRO passo,
+    # bem visível, logo após o login — não que ele seja pulado sem querer.
+    if _RASTREIO_LIVE_OK:
+        pos_atual = obter_posicao_motorista_db(minha_chave)
+        gps_ativo = False
+        if pos_atual and pos_atual.get("atualizado_em"):
+            try:
+                bruto = str(pos_atual["atualizado_em"]).replace("Z", "+00:00")
+                ts = datetime.fromisoformat(bruto)
+                agora_ref = datetime.now(ts.tzinfo) if ts.tzinfo else datetime.now()
+                gps_ativo = (agora_ref - ts).total_seconds() < 120  # ping nos últimos 2 min
+            except Exception:
+                gps_ativo = True  # não deu pra checar a data — não trava o motorista à toa
+
+        if not gps_ativo:
+            link_gps = f"{URL_BASE_MOTOR_API}/motorista/{minha_chave}"
+            st.markdown(_html(f"""
+            <div style="background:#FBF3D9;border:2px solid #8A6D1F;border-radius:12px;
+                        padding:16px;margin-bottom:14px;text-align:center;">
+                <div style="font-size:1.6rem;margin-bottom:4px;">📍</div>
+                <div style="font-weight:800;color:#6B5A2A;margin-bottom:4px;">
+                    Ative o compartilhamento de localização antes de começar
+                </div>
+                <div style="font-size:0.84rem;color:#7a6a3a;">
+                    Obrigatório — é o que permite aos clientes acompanharem as entregas em tempo real.
+                </div>
+            </div>
+            """), unsafe_allow_html=True)
+            col_ok, col_check = st.columns(2)
+            with col_ok:
+                st.link_button("📍 Ativar agora", link_gps, use_container_width=True, type="primary")
+            with col_check:
+                if st.button("🔄 Já ativei — verificar", use_container_width=True, key="verificar_gps_motorista"):
+                    st.rerun()
+            st.caption(
+                "O botão abre uma página separada — toque em **'📍 Compartilhar minha "
+                "localização'** nela e permita o acesso ao GPS quando o celular perguntar. "
+                "Depois, volte aqui e toque em 'Já ativei'."
+            )
+            st.markdown("---")
+        else:
+            st.caption(f"📍 Compartilhando localização · última atualização: {pos_atual.get('atualizado_em','—')}")
 
     tickets_raw = obter_tickets_com_id_db(hoje) if _LOGISTICA_OK else obter_tickets_db(hoje)
     df = pd.DataFrame(tickets_raw) if tickets_raw else pd.DataFrame()
@@ -758,14 +811,10 @@ def _visualizacao_motorista(user):
         </div>
         """), unsafe_allow_html=True)
 
-        # ── [NOVO] Compartilhar localização (rastreio ao vivo) ──────────
-        # Só aparece se o admin já ativou o rastreio ao vivo desta entrega
-        # específica (senão não há pra onde enviar o GPS). Abre a página
-        # pública GET /motorista/{ticket_id}, servida pelo motor_api.py,
-        # que pede permissão de GPS ao celular e começa a enviar sozinha.
-        if _RASTREIO_LIVE_OK and doc_id and obter_config_entrega_live_db(doc_id):
-            link_gps = f"{URL_BASE_MOTOR_API}/motorista/{doc_id}"
-            st.link_button("📍 Compartilhar minha localização", link_gps, use_container_width=True)
+        # [REMOVIDO] O botão "Compartilhar minha localização" por entrega
+        # individual saiu daqui — o compartilhamento agora é feito UMA VEZ
+        # por motorista, logo no topo desta tela (ver aviso obrigatório em
+        # _visualizacao_motorista), e vale para todas as entregas do dia.
 
         if status == "⏳ Pendente":
             if not (_LOGISTICA_OK and doc_id):
